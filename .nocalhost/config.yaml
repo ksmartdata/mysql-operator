@@ -1,0 +1,52 @@
+name: mysql-operator
+serviceType: statefulset
+containers:
+  - name: operator
+    dev:
+      gitUrl: ""
+      image: nocalhost-docker.pkg.coding.net/nocalhost/dev-images/golang:latest
+      shell: bash
+      workDir: ""
+      storageClass: ""
+      resources:
+        limits:
+          memory: 2048Mi
+          cpu: "2"
+        requests:
+          memory: 2048Mi
+          cpu: "2"
+      persistentVolumeDirs: []
+      command:
+        run: []
+        debug:
+          - dlv
+          - debug
+          - /home/nocalhost-dev/cmd/mysql-operator
+          - --headless
+          - --listen=:2345
+          - --api-version=2
+          - --accept-multiclient
+          - --
+          - '--leader-election-namespace=mcamel-system'
+          - '--orchestrator-uri=http://mysql-operator.mcamel-system/api'
+          - >-
+            --sidecar-image=ghcr.m.daocloud.io/ksmartdata/mysql-operator-sidecar-5.7:v0.7.22
+          - >-
+            --sidecar-mysql8-image=ghcr.m.daocloud.io/ksmartdata/mysql-operator-sidecar-8.0:v0.7.22
+          - '--failover-before-shutdown=true'
+      debug:
+        remoteDebugPort: 2345
+        language: go
+      hotReload: false
+      sync:
+        type: send
+        mode: pattern
+        deleteProtection: true
+        filePattern:
+          - .
+        ignoreFilePattern:
+          - .git
+      env:
+        - name: GOPROXY
+          value: https://goproxy.cn
+      portForward: []

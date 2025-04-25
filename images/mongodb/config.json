@@ -1,0 +1,9 @@
+{
+  "namespace": "default",
+  "repo_url": "ghcr.io/ksmartdata",
+  "operator_image": "mongodb-kubernetes-operator",
+  "version_upgrade_hook_image": "mongodb-kubernetes-operator-version-upgrade-post-start-hook",
+  "agent_image": "mongodb-agent-ubi",
+  "readiness_probe_image": "mongodb-kubernetes-readinessprobe",
+  "s3_bucket": ""
+}

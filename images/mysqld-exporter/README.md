@@ -1,0 +1,1 @@
+MOVE TO https://github.com/ksmartdata/docker-images/tree/main/images/mysqld-exporter

@@ -1,0 +1,72 @@
+name: Release Single Mongodb Image
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline-argument:
+        description: 'Images(agent,readiness-probe,version-upgrade-hook,operator)'
+        required: true
+      image-tag:
+        description: 'Image tag to build'
+        required: true
+jobs:
+  release-single-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          #/usr/bin/git config --global --add safe.directory /home/runner/work/ksmartdata/ksmartdata/ksmartdata
+          path: ksmartdata
+
+      - name: Checkout mongodb operator
+        uses: actions/checkout@v4
+        with:
+          repository: "mongodb/mongodb-kubernetes-operator"
+          # 使用指定的tag
+          ref: 'v0.10.0'
+          #/usr/bin/git config --global --add safe.directory /home/runner/work/ksmartdata/ksmartdata/mongodb-kubernetes-operator
+          path: mongodb-kubernetes-operator
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10.4'
+          architecture: 'x64'
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ hashFiles('./mongodb-kubernetes-operator/requirements.txt') }}
+
+      - name: Install Python Dependencies
+        run: pip install -r ./mongodb-kubernetes-operator/requirements.txt
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # template: .action_templates/steps/set-up-qemu.yaml
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Override some files of mongodb operator
+        run: |
+          cp ./ksmartdata/images/mongodb/config.json ./mongodb-kubernetes-operator/scripts/ci/config.json
+          cp ./ksmartdata/images/mongodb/operator-inventory.yaml ./mongodb-kubernetes-operator/inventories/operator-inventory.yaml
+          cp ./ksmartdata/images/mongodb/pipeline.py ./mongodb-kubernetes-operator/pipeline.py
+          cp ./ksmartdata/images/mongodb/Dockerfile.ubi ./mongodb-kubernetes-operator/scripts/dev/templates/agent/Dockerfile.ubi
+          cp ./ksmartdata/images/mongodb/inventory.yaml ./mongodb-kubernetes-operator/inventory.yaml
+
+      - name: Build and Push Image To ghcr.io
+        working-directory: ./mongodb-kubernetes-operator
+        run: python pipeline.py --image-name ${{ github.event.inputs.pipeline-argument }} --tag ${{ github.event.inputs.image-tag }}
+        env:
+          MONGODB_COMMUNITY_CONFIG: "${{ github.workspace }}/mongodb-kubernetes-operator/scripts/ci/config.json"
+          version_id: "${{ github.event.inputs.image-tag }}"
+

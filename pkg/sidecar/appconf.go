@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"strconv"
 	"strings"
@@ -32,6 +33,15 @@ import (
 // RunConfigCommand generates my.cnf, client.cnf and 10-dynamic.cnf files.
 // nolint: gocyclo
 func RunConfigCommand(cfg *Config) error {
+	defer func() {
+		cmd := exec.Command("chown", "-R", "mysql.mysql", "/etc/mysql")
+		cmd.Env = os.Environ()
+		fmt.Println("run chown /etc/mysql: ", cmd.Run())
+		//备份恢复需要这个目录
+		cmd = exec.Command("chown", "-R", "mysql.mysql", "/var/lib/mysql")
+		cmd.Env = os.Environ()
+		fmt.Println("run chown /var/lib/mysql: ", cmd.Run())
+	}()
 	log.Info("configuring server", "host", cfg.Hostname)
 	var err error
 

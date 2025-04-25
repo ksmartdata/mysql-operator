@@ -1,0 +1,903 @@
+name: Release Manually
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'which docker build to run'
+        required: true
+        default: 'rocketmq-operator'
+        type: choice
+        options:
+          - 'rocketmq-operator'
+          - 'rocketmq-nameserver'
+          - 'rocketmq-broker'
+          - 'rocketmq-dashboard'
+          - 'rocketmq-console-schnell18'
+          - 'rocketmq-controller'
+          - 'mgr-community-server'
+          - 'mgr-community-router'
+          - 'mgr-community-operator'
+          - 'mgr-community-sidecar'
+          - 'pgbouncer'
+          - 'rclone-mongo'
+          - 'ot-redis-operator'
+          - 'ot-redis-operator-upstream'
+          - 'ot-redis'
+          - 'ot-redis-upstream'
+          - 'zoo-entrance'
+          - 'logical-backup'
+          - 'ci-builder'
+          - 'elasticsearch-with-s3-plugin'
+          - 'mysql-operator-sidecar-80'
+          - 'redisinsight'
+          - 'mysql-operator'
+      upstream-ref:
+        description: 'upstream ref'
+        required: false
+        default: ''
+        type: string
+      tag:
+        description: 'tag'
+        required: true
+        default: 'v0.0.1'
+        type: string
+env:
+  ONLINE_REGISTER: ghcr.io/ksmartdata
+  BUILD_PLATFORM: linux/amd64,linux/arm64
+
+jobs:
+  redisinsight:
+    if : ${{ inputs.job == 'redisinsight' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Clone RedisInsight
+        uses: actions/checkout@v3
+        with:
+          repository: RedisInsight/RedisInsight
+          ref: ${{ inputs.tag }}
+
+      - name: Fix Dockerfile
+        # 把 Dockerfile 中的 FROM 20.14-alpine 替换成 FROM node:20.14-alpine
+        run: |
+          sed -i 's/FROM 20.14-alpine/FROM node:20.14-alpine/g' Dockerfile
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: .
+          file: ./Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/redisinsight:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/redisinsight:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  mysql-operator-sidecar-80:
+    if : ${{ inputs.job == 'mysql-operator-sidecar-80' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator-sidecar-80
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./arm64/images/mysql-operator-sidecar-8.0
+          file: ./arm64/images/mysql-operator-sidecar-8.0/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/mysql-operator-sidecar-8.0:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/mysql-operator-sidecar-8.0:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  ci-builder:
+    if : ${{ inputs.job == 'ci-builder' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: ci-builder
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./arm64/images/ci-builder
+          file: ./arm64/images/ci-builder/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/ci-builder:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/ci-builder:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  logical-backup:
+    if : ${{ inputs.job == 'logical-backup' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: logical-backup
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./arm64/images/logical-backup
+          file: ./arm64/images/logical-backup/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/logical-backup:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/logical-backup:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  ot-redis-upstream:
+    if : ${{ inputs.job == 'ot-redis-upstream' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Clone OT-CONTAINER-KIT/redis
+        uses: actions/checkout@v3
+        with:
+          repository: drivebyer/redis
+          # 默认为空，则使用默认分支
+          ref: ${{ inputs.upstream-ref }}
+
+      - name: Adapt
+        run: |
+          # 删除 entrypoint.sh 文件中的行：REDIS_MAJOR_VERSION=${REDIS_MAJOR_VERSION:-"v7"}
+          # 因为老版本的 OT operator 不会给 pod 传递 REDIS_MAJOR_VERSION 这个环境变量，会导致 entrypoint.sh 走到错误的逻辑流程
+          sed -i '/REDIS_MAJOR_VERSION=${REDIS_MAJOR_VERSION:-"v7"}/d' ./entrypoint.sh
+          
+          # 将 entrypoint.sh 中的 NODE_CONF_DIR=${NODE_CONF_DIR:-"/node-conf"} 替换成 NODE_CONF_DIR=${NODE_CONF_DIR:-"/data"}
+          # 因为 /data 是 pvc 的默认挂载目录
+          sed -i 's/NODE_CONF_DIR=${NODE_CONF_DIR:-"\/node-conf"}/NODE_CONF_DIR=${NODE_CONF_DIR:-"\/data"}/g' ./entrypoint.sh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare env variables
+        id: env
+        run: |
+          echo "BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "GIT_SHA=$(git rev-parse --short HEAD | cut -c1-7)" >> $GITHUB_ENV
+          echo "GIT_REF=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match)" >> $GITHUB_ENV
+          echo "GIT_REPO=$(git config --get remote.origin.url)" >> $GITHUB_ENV
+
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Build from ${{ env.GIT_REPO }}/${{ env.GIT_REF }}@${{ env.GIT_SHA }} at ${{ env.BUILD_DATE }}
+          labels:
+            org.opencontainers.image.description=Build from ${{ env.GIT_REPO }}/${{ env.GIT_REF }}@${{ env.GIT_SHA }} at ${{ env.BUILD_DATE }}
+          context: .
+          file: ./Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          build-args: |
+            REDIS_DOWNLOAD_URL=https://download.redis.io/releases
+            REDIS_VERSION=${{ inputs.tag }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/ot-redis:v${{ inputs.tag }}-alpine
+            ${{ env.ONLINE_REGISTER }}/ot-redis:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  ot-redis-operator-upstream:
+    if : ${{ inputs.job == 'ot-redis-operator-upstream' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Clone OT-CONTAINER-KIT/redis-operator
+        uses: actions/checkout@v3
+        with:
+          repository: OT-CONTAINER-KIT/redis-operator
+          # 默认为空，则使用默认分支
+          ref: ${{ inputs.upstream-ref }}
+
+      - name: Prepare env variables
+        id: env
+        run: |
+          echo "BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "GIT_SHA=$(git rev-parse --short HEAD | cut -c1-7)" >> $GITHUB_ENV
+          echo "GIT_REF=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match)" >> $GITHUB_ENV
+          echo "GIT_REPO=$(git config --get remote.origin.url)" >> $GITHUB_ENV
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Build from ${{ env.GIT_REPO }}/${{ env.GIT_REF }}@${{ env.GIT_SHA }} at ${{ env.BUILD_DATE }}
+          labels:
+            org.opencontainers.image.description=Build from ${{ env.GIT_REPO }} ${{ env.GIT_REF }} ${{ env.GIT_SHA }} at ${{ env.BUILD_DATE }}
+          context: .
+          file: ./Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/ot-redis-operator:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/ot-redis-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rclone-mongo:
+    if : ${{ inputs.job == 'rclone-mongo' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./arm64/images/rclone-mongo
+          file: ./arm64/images/rclone-mongo/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/rclone-mongo:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rocketmq-operator:
+    if: ${{ inputs.job == 'rocketmq-operator' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone RocketMQ Operator
+        uses: actions/checkout@v2
+        with:
+          repository: ksmartdata/rocketmq-operator
+          # 使用 package 分支，master 分支用来与社区同步
+          ref: package
+
+      - name: Generate missing files
+        run: |
+          go mod tidy
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          build-args: |
+            TARGETOS=linux
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rocketmq-nameserver:
+    if: ${{ inputs.job == 'rocketmq-nameserver' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone RocketMQ Operator
+        uses: actions/checkout@v2
+        with:
+          repository: ksmartdata/rocketmq-operator
+          # 使用 package 分支，master 分支用来与社区同步
+          ref: package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./images/namesrv/alpine
+          file: ./images/namesrv/alpine/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          build-args: |
+            version=5.1.4
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rocketmq-controller:
+    if: ${{ inputs.job == 'rocketmq-controller' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone RocketMQ Operator
+        uses: actions/checkout@v2
+        with:
+          repository: ksmartdata/rocketmq-operator
+          # 使用 package 分支，master 分支用来与社区同步
+          ref: package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./images/controller/alpine
+          file: ./images/controller/alpine/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          build-args: |
+            version=5.1.4
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rocketmq-broker:
+    if: ${{ inputs.job == 'rocketmq-broker' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone RocketMQ Operator
+        uses: actions/checkout@v2
+        with:
+          repository: ksmartdata/rocketmq-operator
+          # 使用 package 分支，master 分支用来与社区同步
+          ref: package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./images/broker/alpine
+          file: ./images/broker/alpine/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          build-args: |
+            version=5.1.4
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+# 在schnell18的基础上添加tzdata以支持更改时区
+  rocketmq-console-schnell18:
+    if : ${{ inputs.job == 'rocketmq-console-schnell18' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./arm64/images/rocketmq-console-schnell18
+          file: ./arm64/images/rocketmq-console-schnell18/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/rocketmq-dashboard:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rocketmq-dashboard:
+    if: ${{ inputs.job == 'rocketmq-dashboard' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone RocketMQ Dashboard
+        uses: actions/checkout@v2
+        with:
+          repository: ksmartdata/rocketmq-dashboard
+          ref: package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 8
+          distribution: 'temurin'
+
+      - name: Build Tar
+        run: |
+          MAVEN_OPTS="-Xmx512m" mvn package -Dmaven.compiler.fork=true -DskipTests
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: .
+          file: ./src/main/docker/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  mgr-community-server:
+    if: ${{ inputs.job == 'mgr-community-server' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare images
+        run: |
+          docker pull container-registry.oracle.com/mysql/community-server:${{ inputs.tag }}
+          docker pull container-registry.oracle.com/mysql/community-server:${{ inputs.tag }}-aarch64
+          docker tag container-registry.oracle.com/mysql/community-server:${{ inputs.tag }} ${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-amd64
+          docker tag container-registry.oracle.com/mysql/community-server:${{ inputs.tag }}-aarch64 ${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-arm64
+          
+          docker push ${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-amd64
+          docker push ${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-arm64
+
+      - name: Create and push manifest images
+        uses: Noelware/docker-manifest-action@master
+        with:
+          inputs: ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          images: ${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-amd64,${{ env.ONLINE_REGISTER }}/community-server:${{ inputs.tag }}-arm64
+          push: true
+
+  mgr-community-router:
+    if: ${{ inputs.job == 'mgr-community-router' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare images
+        run: |
+          docker pull container-registry.oracle.com/mysql/community-router:${{ inputs.tag }}
+          docker pull container-registry.oracle.com/mysql/community-router:${{ inputs.tag }}-aarch64
+          docker tag container-registry.oracle.com/mysql/community-router:${{ inputs.tag }} ${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-amd64
+          docker tag container-registry.oracle.com/mysql/community-router:${{ inputs.tag }}-aarch64 ${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-arm64
+          
+          docker push ${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-amd64
+          docker push ${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-arm64
+
+      - name: Create and push manifest images
+        uses: Noelware/docker-manifest-action@master
+        with:
+          inputs: ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          images: ${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-amd64,${{ env.ONLINE_REGISTER }}/community-router:${{ inputs.tag }}-arm64
+          push: true
+
+  mgr-community-operator:
+    if: ${{ inputs.job == 'mgr-community-operator' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare images
+        run: |
+          docker pull container-registry.oracle.com/mysql/community-operator:${{ inputs.tag }}
+          docker pull container-registry.oracle.com/mysql/community-operator:${{ inputs.tag }}-aarch64
+          docker tag container-registry.oracle.com/mysql/community-operator:${{ inputs.tag }} ${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-amd64
+          docker tag container-registry.oracle.com/mysql/community-operator:${{ inputs.tag }}-aarch64 ${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-arm64
+          
+          docker push ${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-amd64
+          docker push ${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-arm64
+
+      - name: Create and push manifest images
+        uses: Noelware/docker-manifest-action@master
+        with:
+          inputs: ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          images: ${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-amd64,${{ env.ONLINE_REGISTER }}/community-operator:${{ inputs.tag }}-arm64
+          push: true
+          amend: true
+  mgr-community-sidecar:
+    if: ${{ inputs.job == 'mgr-community-sidecar' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./images/mgr-diagnose
+          file: ./images/mgr-diagnose/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/community-operator-with-diagnose:8.3.0-2.1.2
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  pgbouncer:
+    if: ${{ inputs.job == 'pgbouncer' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+
+      - name: Build && Push
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./arm64/images/
+          file: ./arm64/images/pgbouncer/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          #platforms: ${{ env.BUILD_PLATFORM }} 目前只有 amd，先注释掉
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          build-args: |
+            PGBOUNCER_VERSION=${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  ot-redis-operator:
+    if: ${{ inputs.job == 'ot-redis-operator' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./
+          file: ./arm64/images/ot-redis-operator/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+             ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:v${{ inputs.tag }}
+             ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:latest
+  ot-redis:
+    if: ${{ inputs.job == 'ot-redis' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./arm64/images/ot-redis
+          file: ./arm64/images/ot-redis/Dockerfile-release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:v${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  zoo-entrance:
+    if: ${{ inputs.job == 'zoo-entrance' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./arm64/images/zoo-entrance
+          file: ./arm64/images/zoo-entrance/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:v${{ inputs.tag }}
+
+  elasticsearch-with-s3-plugin:
+    if: ${{ inputs.job == 'elasticsearch-with-s3-plugin' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: elasticsearch-with-s3-plugin
+        uses: docker/build-push-action@v3.1.1
+        with:
+          annotations: |
+            GITHUB_REF: ${{ github.ref }}
+            GITHUB_SHA: ${{ github.sha }}
+          context: ./images/elasticsearch/${{ inputs.tag }}
+          file: ./images/elasticsearch/${{ inputs.tag }}/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ inputs.job }}:${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+  mysql-operator:
+    if: ${{ inputs.job == 'mysql-operator' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./
+          file: ./arm64/images/mysql-operator/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/mysql-operator:${{ inputs.tag }}
+            ${{ env.ONLINE_REGISTER }}/mysql-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

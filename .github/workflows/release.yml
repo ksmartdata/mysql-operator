@@ -1,0 +1,244 @@
+name: Release
+on:
+  push:
+    tags:
+    - 'v*.*.*'
+env:
+  ONLINE_REGISTER: ghcr.io/ksmartdata
+  BUILD_PLATFORM: linux/amd64,linux/arm64
+jobs:
+  zoo-entrance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: zoo-entrance
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./arm64/images/zoo-entrance
+          file: ./arm64/images/zoo-entrance/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/zoo-entrance:v1.0.1
+            ${{ env.ONLINE_REGISTER }}/zoo-entrance:latest
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  ot-redis:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone mysql-operator repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: mysql-operator
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/ot-redis
+#          file: ./arm64/images/ot-redis/Dockerfile-bash
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/ot-redis:v6.2.5-alpine
+#            ${{ env.ONLINE_REGISTER }}/ot-redis:latest
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  ot-redis-operator:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone mysql-operator repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: mysql-operator
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./
+#          file: ./arm64/images/ot-redis-operator/Dockerfile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#             ${{ env.ONLINE_REGISTER }}/ot-redis-operator:v0.14.1
+#             ${{ env.ONLINE_REGISTER }}/ot-redis-operator:latest
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  rclone-redis:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone mysql-operator repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: mysql-operator
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/rclone-redis
+#          file: ./arm64/images/rclone-redis/Dockerfile-replace-dockefile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/rclone-redis:v0.1.8
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  postgres-operator:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: postgres-operator
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/postgres-operator
+#          file: ./arm64/images/postgres-operator/Dockerfile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/postgres-operator:${{ github.ref_name }}
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  logical-backup:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: logical-backup
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/logical-backup
+#          file: ./arm64/images/logical-backup/Dockerfile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/logical-backup:${{ github.ref_name }}
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  spilo:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: spilo
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/spilo
+#          file: ./arm64/images/spilo/Dockerfile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/spilo-15:${{ github.ref_name }}
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#  redis-shake:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Git clone repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v2
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v2
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v2.0.0
+#      - name: redis-shake
+#        uses: docker/build-push-action@v3.1.1
+#        with:
+#          context: ./arm64/images/redis-shake
+#          file: ./arm64/images/redis-shake/Dockerfile
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          push: true
+#          platforms: ${{ env.BUILD_PLATFORM }}
+#          tags: |
+#            ${{ env.ONLINE_REGISTER }}/redis-shake:v1.0.0
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max

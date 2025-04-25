@@ -1,0 +1,44 @@
+{
+  "clusterName": "mgr0304",
+  "defaultReplicaSet": {
+    "name": "default",
+    "primary": "mgr0304-0.mgr0304-instances.default.svc.cluster.local:3306",
+    "ssl": "REQUIRED",
+    "status": "OK",
+    "statusText": "Cluster is ONLINE and can tolerate up to ONE failure.",
+    "topology": {
+      "mgr0304-0.mgr0304-instances.default.svc.cluster.local:3306": {
+        "address": "mgr0304-0.mgr0304-instances.default.svc.cluster.local:3306",
+        "memberRole": "PRIMARY",
+        "mode": "R/W",
+        "readReplicas": {},
+        "replicationLag": "applier_queue_applied",
+        "role": "HA",
+        "status": "ONLINE",
+        "version": "8.0.37"
+      },
+      "mgr0304-1.mgr0304-instances.default.svc.cluster.local:3306": {
+        "address": "mgr0304-1.mgr0304-instances.default.svc.cluster.local:3306",
+        "memberRole": "SECONDARY",
+        "mode": "R/O",
+        "readReplicas": {},
+        "replicationLag": "applier_queue_applied",
+        "role": "HA",
+        "status": "ONLINE",
+        "version": "8.0.37"
+      },
+      "mgr0304-2.mgr0304-instances.default.svc.cluster.local:3306": {
+        "address": "mgr0304-2.mgr0304-instances.default.svc.cluster.local:3306",
+        "memberRole": "SECONDARY",
+        "mode": "R/O",
+        "readReplicas": {},
+        "replicationLag": "applier_queue_applied",
+        "role": "HA",
+        "status": "ONLINE",
+        "version": "8.0.37"
+      }
+    },
+    "topologyMode": "Single-Primary"
+  },
+  "groupInformationSourceMember": "mgr0304-0.mgr0304-instances.default.svc.cluster.local:3306"
+}
