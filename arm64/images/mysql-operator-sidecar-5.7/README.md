@@ -1,0 +1,1 @@
+MOVE to https://github.com/ksmartdata/docker-images/tree/main/images/mysql-operator-sidecar-5.7
