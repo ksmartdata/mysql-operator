@@ -25,7 +25,6 @@ on:
           - 'ot-redis'
           - 'ot-redis-upstream'
           - 'zoo-entrance'
-          - 'logical-backup'
           - 'ci-builder'
           - 'elasticsearch-with-s3-plugin'
           - 'mysql-operator-sidecar-80'
@@ -146,37 +145,6 @@ jobs:
           tags: |
             ${{ env.ONLINE_REGISTER }}/ci-builder:${{ inputs.tag }}
             ${{ env.ONLINE_REGISTER }}/ci-builder:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-  logical-backup:
-    if : ${{ inputs.job == 'logical-backup' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Git clone repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2.0.0
-      - name: logical-backup
-        uses: docker/build-push-action@v3.1.1
-        with:
-          context: ./arm64/images/logical-backup
-          file: ./arm64/images/logical-backup/Dockerfile
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          push: true
-          platforms: ${{ env.BUILD_PLATFORM }}
-          tags: |
-            ${{ env.ONLINE_REGISTER }}/logical-backup:${{ inputs.tag }}
-            ${{ env.ONLINE_REGISTER }}/logical-backup:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
