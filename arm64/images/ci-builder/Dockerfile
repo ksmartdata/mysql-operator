@@ -21,7 +21,7 @@ RUN apk upgrade --no-cache && \
     go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.10.0 && \
     go install github.com/golang/mock/mockgen@v1.6.0 && \
     go install github.com/jstemmer/go-junit-report@latest && \
-    go install github.com/grpc-ecosystem/protoc-gen-grpc-gateway-ts@v1.1.1 && \
+    go install github.com/grpc-ecosystem/protoc-gen-grpc-gateway-ts@v1.1.2 && \
     go install github.com/favadi/protoc-go-inject-tag@latest && \
     go install github.com/go-swagger/go-swagger/cmd/swagger@v0.29.0
 
