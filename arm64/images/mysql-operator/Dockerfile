@@ -1,4 +1,4 @@
-FROM golang:1.19.2 AS builder
+FROM golang:1.21 AS builder
 
 USER root
 
@@ -13,7 +13,6 @@ WORKDIR /build
 RUN wget -O arm64.zip https://github.com/ksmartdata/mysql-operator/archive/refs/heads/extra_image.zip
 RUN unzip arm64.zip
 WORKDIR /build/mysql-operator-extra_image
-RUN go mod tidy
 RUN CGO_ENABLED=0 go build  -o /mysql-operator  cmd/mysql-operator/main.go
 
 
