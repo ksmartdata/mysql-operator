@@ -194,6 +194,9 @@ func initFileQuery(cfg *Config, gtidPurged string) []byte {
 
 	// configure metrics exporter user
 	queries = append(queries, createUserQuery(cfg.MetricsUser, cfg.MetricsPassword, "127.0.0.1",
+		// sys_exporter的权限在这里写死了, 如果需要增加权限就像下面这样一行, 增加后需要重新打包sidecar,
+		// 这里会生成sql语句写入到operator-init.sql
+		//[]string{"SELECT", "PROCESS", "REPLICATION CLIENT", "REPLICATION SLAVE"}, "*.*",
 		[]string{"SELECT", "PROCESS", "REPLICATION CLIENT"}, "*.*",
 		[]string{"SELECT", "CREATE"}, fmt.Sprintf("%s.%s", toolsDbName, toolsHeartbeatTableName))...)
 
