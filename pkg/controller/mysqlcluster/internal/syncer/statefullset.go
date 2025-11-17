@@ -306,8 +306,13 @@ func (s *sfsSyncer) getEnvFor(name string) []core.EnvVar {
 	sctOpName := s.cluster.GetNameForResource(mysqlcluster.Secret)
 	switch name {
 	case containerExporterName:
-		env = append(env, s.envVarFromSecret(sctOpName, "USER", "METRICS_EXPORTER_USER", false))
-		env = append(env, s.envVarFromSecret(sctOpName, "PASSWORD", "METRICS_EXPORTER_PASSWORD", false))
+		// 把metrics-exporter容器连接mysql的账户从sys_exporter切换到root, sys_exporter的权限控制被写死在sidecar的代码里了
+		// 如何重新打包sidecar已不可考
+		env = append(env, core.EnvVar{
+			Name:  "USER",
+			Value: "root",
+		})
+		env = append(env, s.envVarFromSecret(sctName, "PASSWORD", "ROOT_PASSWORD", false))
 		env = append(env, core.EnvVar{
 			Name:  "DATA_SOURCE_NAME",
 			Value: fmt.Sprintf("$(USER):$(PASSWORD)@(127.0.0.1:%d)/", s.cluster.ExporterDataSourcePort()),
