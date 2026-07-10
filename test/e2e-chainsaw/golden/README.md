@@ -8,6 +8,10 @@
 不要在功能分支上重新生成来"让测试变绿"——那等于把回归写进期望值。
 更新 golden 的唯一合法场景：有意变更配置且在 MR 里说明并评审。
 
-- my.cnf-5.7.44.cnf —— 待步骤 0 生成
-- my.cnf-8.0.37.cnf —— 待步骤 0 生成
-- my.cnf-8.4.9.cnf  —— 阶段 3 功能落地时生成并评审
+**golden 与 CR 资源规格耦合**：operator 会按 pod memory 推导 `innodb-buffer-pool-size` /
+`innodb-log-file-size` 写进 my.cnf（追加在文件尾部）。改动 `tests/_shared/cluster.yaml`
+的 resources 时必须同步更新 golden（CI 实测：512Mi→768Mi 新增了 buffer-pool 行）。
+
+- my.cnf-5.7.44.cnf —— 已入库（基线 run 29083492185 + 768Mi 资源修正）
+- my.cnf-8.0.37.cnf —— 已入库（同上）
+- my.cnf-8.4.9.cnf  —— 8.4 适配功能落地时生成并评审

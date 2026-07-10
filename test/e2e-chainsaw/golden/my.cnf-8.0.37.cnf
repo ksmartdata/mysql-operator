@@ -35,5 +35,6 @@ table-definition-cache         = 4096
 table-open-cache               = 4096
 thread-cache-size              = 50
 tmp-table-size                 = 32M
+innodb-buffer-pool-size        = 256M
 innodb-log-file-size           = 48M
 !includedir /etc/mysql/conf.d
