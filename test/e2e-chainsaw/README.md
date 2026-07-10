@@ -27,7 +27,10 @@ test/e2e-chainsaw/
 kind create cluster --name chainsaw
 docker build -t mysql-operator:e2e -f arm64/images/mysql-operator/Dockerfile .
 kind load docker-image mysql-operator:e2e --name chainsaw
+# podSecurityContext=null 对齐 mcamel 生产 chart（默认 runAsUser 65532 会让
+# orchestrator 容器写 /etc/orchestrator 配置被拒而 CrashLoop）
 helm install mysql-operator ./deploy/charts/mysql-operator \
+  --set podSecurityContext=null \
   --set image.repository=mysql-operator --set image.tag=e2e \
   --set orchestrator.image.repository=ghcr.io/ksmartdata/mysql-operator-orchestrator \
   --set orchestrator.image.tag=v0.7.3 \

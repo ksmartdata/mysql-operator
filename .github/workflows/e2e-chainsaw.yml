@@ -35,7 +35,10 @@ jobs:
 
       - name: Install mysql-operator chart
         run: |
+          # podSecurityContext=null 对齐 mcamel 生产 chart：默认的 runAsUser 65532
+          # 会让 orchestrator 容器写 /etc/orchestrator/orchestrator.conf.json 被拒（CrashLoop）
           helm install mysql-operator ./deploy/charts/mysql-operator \
+            --set podSecurityContext=null \
             --set image.repository=mysql-operator \
             --set image.tag=e2e \
             --set image.pullPolicy=IfNotPresent \
