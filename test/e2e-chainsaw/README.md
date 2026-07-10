@@ -62,11 +62,14 @@ golden 入库后 01 用例的 golden 步骤才会通过。**8.4.9 的 golden 在
 
 ## 注意
 
-- **测试 SQL 用 `sys_operator` 账号**（密码从 `e2e-mysql-operated` secret 现取），不用 root。
-  CI 实测（run 29088678923）：5.7 + library 镜像下，entrypoint 首启的探活客户端连不上
-  临时 server（30 次全失败 → `Unable to start server` → 容器重启 → 数据目录已存在跳过
-  初始化），root 密码永远不会被设置。sys_operator 由 init_file 每次启动重建，天然可靠。
-  **该现象可能同样存在于生产的 5.7.44 实例，值得在 8.4 适配阶段顺带排查 root 密码是否可用。**
+- **测试 SQL 用 `sys_operator` 账号**（密码从 `e2e-mysql-operated` secret 现取），不用 root；
+  测试数据写 `sys_operator` 库（该账号在 `*.*` 上无 INSERT/DELETE，对工具库有 ALL）。
+  原因：`mysql:5.7` 镜像在磁盘性能差的机器上首启初始化会失败——entrypoint 探活客户端
+  连不上实际已就绪的临时 server（CI 实测 run 29088678923：30 次全败 → `Unable to start
+  server` → 容器重启后跳过初始化），root 密码永远不会被设置（空密码反而可登录）。这是
+  上游 docker-library/mysql 的已知类型问题；5.7.44 是 5.7 最后一个镜像（2023-10 停更），
+  不会再修。8.0+ 的新版 entrypoint 未复现。sys_operator 由 init_file 每次启动重建，
+  不受影响。生产节点磁盘较好通常不中招，但值得抽查存量 5.7.44 实例的 root 可用性。
 
 - CR 模板与 mcamel 下发同形：同时显式 `spec.mysqlVersion`（完整版本号）+ `spec.image`
   （mcamel 生产镜像为 `library/mysql:{Version}` 社区镜像，CI 直连 docker.io）。
