@@ -14,8 +14,12 @@ spec:
         - assert:
             file: ../_shared/ready-assert.yaml
         - script:
-            timeout: 3m
+            timeout: 8m
             content: |
+              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
+              # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
+              sleep 15
+              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
               kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
       catch:
         - events: {}

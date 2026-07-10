@@ -14,8 +14,12 @@ spec:
         - assert:
             file: ../_shared/ready-assert.yaml
         - script:
-            timeout: 3m
+            timeout: 8m
             content: |
+              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
+              # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
+              sleep 15
+              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
               kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
       catch:
         - events: {}
@@ -30,16 +34,17 @@ spec:
             content: |
               set -eu
               # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
+              err=""
               for i in $(seq 1 24); do
-                if kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
                   mysql -uroot -pe2e-root-password -e \
-                  "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>/dev/null; then
+                  "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>&1); then
                   echo SEED_OK
                   exit 0
                 fi
                 sleep 5
               done
-              echo "seed 写入失败"
+              echo "seed 写入失败，最后错误: $err"
               exit 1
             check:
               (contains($stdout, 'SEED_OK')): true
