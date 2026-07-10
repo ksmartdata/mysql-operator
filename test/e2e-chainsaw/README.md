@@ -62,6 +62,12 @@ golden 入库后 01 用例的 golden 步骤才会通过。**8.4.9 的 golden 在
 
 ## 注意
 
+- **测试 SQL 用 `sys_operator` 账号**（密码从 `e2e-mysql-operated` secret 现取），不用 root。
+  CI 实测（run 29088678923）：5.7 + library 镜像下，entrypoint 首启的探活客户端连不上
+  临时 server（30 次全失败 → `Unable to start server` → 容器重启 → 数据目录已存在跳过
+  初始化），root 密码永远不会被设置。sys_operator 由 init_file 每次启动重建，天然可靠。
+  **该现象可能同样存在于生产的 5.7.44 实例，值得在 8.4 适配阶段顺带排查 root 密码是否可用。**
+
 - CR 模板与 mcamel 下发同形：同时显式 `spec.mysqlVersion`（完整版本号）+ `spec.image`
   （mcamel 生产镜像为 `library/mysql:{Version}` 社区镜像，CI 直连 docker.io）。
 - 用例存储用 emptyDir（只测 operator 行为，不测持久化）；mcamel 生产为 PVC。

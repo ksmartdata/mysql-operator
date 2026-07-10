@@ -60,11 +60,12 @@ spec:
             timeout: 3m
             content: |
               set -eu
+              OPPASS=$(kubectl get secret e2e-mysql-operated -n "$NAMESPACE" -o jsonpath='{.data.OPERATOR_PASSWORD}' | base64 -d)
               # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
               wrote=0; err=""
               for i in $(seq 1 24); do
                 if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -e \
+                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
                   "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'hello-from-master');" 2>&1); then
                   wrote=1; break
                 fi
@@ -74,13 +75,13 @@ spec:
               if [ "$wrote" != "1" ]; then
                 echo "主库写入失败"
                 kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -e \
+                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
                   "SELECT @@hostname, @@read_only, @@super_read_only" 2>&1 || true
                 exit 1
               fi
               for i in $(seq 1 30); do
                 out=$(kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -N -e \
+                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
                   "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null || true)
                 if [ "$out" = "hello-from-master" ]; then
                   echo REPLICATION_OK
