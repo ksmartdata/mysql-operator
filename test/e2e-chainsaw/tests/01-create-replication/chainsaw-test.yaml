@@ -100,6 +100,12 @@ spec:
         - podLogs:
             selector: mysql.presslabs.org/cluster=e2e
             tail: 120
+        # mysql 容器若发生过重启，抓上一次运行（首次初始化）的死因
+        - script:
+            content: |
+              kubectl get pods -n "$NAMESPACE" -o wide
+              echo "===== previous logs of e2e-mysql-0/mysql (if restarted) ====="
+              kubectl logs e2e-mysql-0 -c mysql -n "$NAMESPACE" --previous --tail=80 2>&1 || true
     - name: mycnf-golden
       try:
         - script:

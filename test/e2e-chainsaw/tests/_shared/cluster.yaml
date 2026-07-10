@@ -21,8 +21,10 @@ spec:
   podSpec:
     resources:
       requests:
-        cpu: 100m
-        memory: 512Mi
+        # CI runner 资源紧张时 mysql:5.7 入口脚本首次初始化可能中途崩掉
+        # （重启后跳过初始化 → root 密码永久丢失），给足 CPU 降低概率
+        cpu: 500m
+        memory: 768Mi
   volumeSpec:
     emptyDir:
       medium: Memory
