@@ -37,14 +37,18 @@ spec:
               err=""
               for i in $(seq 1 24); do
                 if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql -uroot -pe2e-root-password -e \
+                  mysql --no-defaults -uroot -pe2e-root-password -e \
                   "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>&1); then
                   echo SEED_OK
                   exit 0
                 fi
+                echo "写入尝试 $i 失败: $err"
                 sleep 5
               done
-              echo "seed 写入失败，最后错误: $err"
+              echo "seed 写入失败"
+              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                mysql --no-defaults -uroot -pe2e-root-password -e \
+                "SELECT @@hostname, @@read_only, @@super_read_only" 2>&1 || true
               exit 1
             check:
               (contains($stdout, 'SEED_OK')): true
@@ -107,10 +111,10 @@ spec:
               set -eu
               for i in $(seq 1 24); do
                 if kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql -uroot -pe2e-root-password -N -e \
+                    mysql --no-defaults -uroot -pe2e-root-password -N -e \
                     "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null | grep -q before-failover; then
                   kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql -uroot -pe2e-root-password -e \
+                    mysql --no-defaults -uroot -pe2e-root-password -e \
                     "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
                   echo FAILOVER_OK
                   exit 0
