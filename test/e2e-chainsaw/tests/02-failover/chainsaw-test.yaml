@@ -37,7 +37,7 @@ spec:
               err=""
               for i in $(seq 1 24); do
                 if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -uroot -pe2e-root-password -e \
+                  mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -e \
                   "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>&1); then
                   echo SEED_OK
                   exit 0
@@ -47,7 +47,7 @@ spec:
               done
               echo "seed 写入失败"
               kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                mysql --no-defaults -uroot -pe2e-root-password -e \
+                mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -e \
                 "SELECT @@hostname, @@read_only, @@super_read_only" 2>&1 || true
               exit 1
             check:
@@ -56,8 +56,13 @@ spec:
     - name: kill-master
       try:
         - script:
+            timeout: 4m
             content: |
+              set -eu
+              # 等旧 pod 真正删除，否则后续断言读到的是陈旧状态（run 29086541909 实测 6 秒空过）
               kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --wait=false
+              kubectl wait --for=delete pod/e2e-mysql-0 -n "$NAMESPACE" --timeout=120s || true
+              echo KILLED
 
     - name: promotion-and-recover
       try:
@@ -82,6 +87,19 @@ spec:
             check:
               (contains($stdout, 'PROMOTION_OK')): true
         # 集群整体恢复，旧主 pod 重建后以从库身份回归复制
+        - script:
+            timeout: 8m
+            content: |
+              set -eu
+              # 等 sts 重建出新 pod-0 并就绪（内存 emptyDir 已清空 → 全量重克隆）
+              for i in $(seq 1 36); do
+                if kubectl get pod e2e-mysql-0 -n "$NAMESPACE" >/dev/null 2>&1; then break; fi
+                sleep 5
+              done
+              kubectl wait pod/e2e-mysql-0 -n "$NAMESPACE" --for=condition=Ready --timeout=360s
+              echo NEWPOD_READY
+            check:
+              (contains($stdout, 'NEWPOD_READY')): true
         - assert:
             file: ../_shared/ready-assert.yaml
         - script:
@@ -111,10 +129,10 @@ spec:
               set -eu
               for i in $(seq 1 24); do
                 if kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql --no-defaults -uroot -pe2e-root-password -N -e \
+                    mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -N -e \
                     "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null | grep -q before-failover; then
                   kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql --no-defaults -uroot -pe2e-root-password -e \
+                    mysql --no-defaults -h127.0.0.1 -uroot -pe2e-root-password -e \
                     "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
                   echo FAILOVER_OK
                   exit 0
