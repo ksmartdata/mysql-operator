@@ -26,30 +26,6 @@ spec:
             selector: mysql.presslabs.org/cluster=e2e
             tail: 120
 
-    - name: mycnf-golden
-      try:
-        - script:
-            env:
-              - name: GOLDEN_FILE
-                value: ($values.golden)
-            content: |
-              set -eu
-              actual=$(mktemp)
-              kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' > "$actual"
-              if [ ! -f "$GOLDEN_FILE" ]; then
-                echo "golden 文件缺失: $GOLDEN_FILE"
-                echo "从下方日志采集实际 my.cnf 入库即完成步骤 0（本分支无 operator 代码改动，构建产物即基线）："
-                echo "-----BEGIN ACTUAL MY.CNF-----"
-                cat "$actual"
-                echo "-----END ACTUAL MY.CNF-----"
-                exit 1
-              fi
-              # 逐字节比对：存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）
-              diff -u "$GOLDEN_FILE" "$actual"
-              echo GOLDEN_OK
-            check:
-              (contains($stdout, 'GOLDEN_OK')): true
-
     - name: replication
       try:
         # 节点 condition：pod-0 为 Master、pod-1 在复制（operator↔orchestrator API 契约）
@@ -80,9 +56,17 @@ spec:
             timeout: 3m
             content: |
               set -eu
-              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                mysql -uroot -pe2e-root-password -e \
-                "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'hello-from-master');"
+              # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
+              wrote=0
+              for i in $(seq 1 24); do
+                if kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                  mysql -uroot -pe2e-root-password -e \
+                  "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'hello-from-master');" 2>/dev/null; then
+                  wrote=1; break
+                fi
+                sleep 5
+              done
+              if [ "$wrote" != "1" ]; then echo "主库写入失败"; exit 1; fi
               for i in $(seq 1 30); do
                 out=$(kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
                   mysql -uroot -pe2e-root-password -N -e \
@@ -105,3 +89,31 @@ spec:
         - podLogs:
             selector: mysql.presslabs.org/cluster=e2e
             tail: 120
+    - name: mycnf-golden
+      try:
+        - script:
+            env:
+              - name: GOLDEN_FILE
+                value: ($values.golden)
+            content: |
+              set -eu
+              actual=$(mktemp)
+              kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' > "$actual"
+              if [ ! -f "$GOLDEN_FILE" ]; then
+                echo "golden 文件缺失: $GOLDEN_FILE"
+                echo "从下方日志采集实际 my.cnf 入库即完成步骤 0（本分支无 operator 代码改动，构建产物即基线）："
+                echo "-----BEGIN ACTUAL MY.CNF-----"
+                cat "$actual"
+                echo "-----END ACTUAL MY.CNF-----"
+                exit 1
+              fi
+              # 逐字节比对（仅容忍末尾换行差异，日志采集会引入）：
+              # 存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）
+              g=$(mktemp); a2=$(mktemp)
+              sed -e '$a\' "$GOLDEN_FILE" > "$g"
+              sed -e '$a\' "$actual" > "$a2"
+              diff -u "$g" "$a2"
+              echo GOLDEN_OK
+            check:
+              (contains($stdout, 'GOLDEN_OK')): true
+

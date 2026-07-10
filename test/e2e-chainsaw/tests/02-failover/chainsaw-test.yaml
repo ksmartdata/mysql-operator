@@ -26,12 +26,21 @@ spec:
     - name: seed-data
       try:
         - script:
+            timeout: 3m
             content: |
               set -eu
-              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                mysql -uroot -pe2e-root-password -e \
-                "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');"
-              echo SEED_OK
+              # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
+              for i in $(seq 1 24); do
+                if kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                  mysql -uroot -pe2e-root-password -e \
+                  "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>/dev/null; then
+                  echo SEED_OK
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "seed 写入失败"
+              exit 1
             check:
               (contains($stdout, 'SEED_OK')): true
 
@@ -88,15 +97,23 @@ spec:
               (contains($stdout, 'REJOIN_OK')): true
         # 新主可写，且 failover 前的数据仍在
         - script:
+            timeout: 3m
             content: |
               set -eu
-              kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                mysql -uroot -pe2e-root-password -N -e \
-                "SELECT val FROM e2e_test.t WHERE id=1" | grep -q before-failover
-              kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                mysql -uroot -pe2e-root-password -e \
-                "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
-              echo FAILOVER_OK
+              for i in $(seq 1 24); do
+                if kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                    mysql -uroot -pe2e-root-password -N -e \
+                    "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null | grep -q before-failover; then
+                  kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                    mysql -uroot -pe2e-root-password -e \
+                    "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
+                  echo FAILOVER_OK
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "新主验证失败：数据缺失或不可写"
+              exit 1
             check:
               (contains($stdout, 'FAILOVER_OK')): true
       catch:
