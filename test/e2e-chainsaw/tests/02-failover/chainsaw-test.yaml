@@ -39,7 +39,7 @@ spec:
               for i in $(seq 1 24); do
                 if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
                   mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                  "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');" 2>&1); then
+                  "CREATE TABLE IF NOT EXISTS sys_operator.e2e_t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO sys_operator.e2e_t VALUES (1, 'before-failover');" 2>&1); then
                   echo SEED_OK
                   exit 0
                 fi
@@ -132,10 +132,10 @@ spec:
               for i in $(seq 1 24); do
                 if kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
                     mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
-                    "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null | grep -q before-failover; then
+                    "SELECT val FROM sys_operator.e2e_t WHERE id=1" 2>/dev/null | grep -q before-failover; then
                   kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
                     mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                    "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
+                    "REPLACE INTO sys_operator.e2e_t VALUES (2, 'after-failover');"
                   echo FAILOVER_OK
                   exit 0
                 fi
