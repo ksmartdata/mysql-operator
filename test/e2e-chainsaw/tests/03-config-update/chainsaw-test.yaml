@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# 场景 5：patch spec.mysqlConf → my.cnf 更新 → 滚动完成后集群回 Ready
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: config-update
+spec:
+  template: true
+  steps:
+    - name: create-cluster
+      try:
+        - apply:
+            file: ../_shared/cluster.yaml
+        - assert:
+            file: ../_shared/ready-assert.yaml
+
+    - name: patch-mysql-conf
+      try:
+        - patch:
+            resource:
+              apiVersion: mysql.presslabs.org/v1alpha1
+              kind: MysqlCluster
+              metadata:
+                name: e2e
+              spec:
+                mysqlConf:
+                  max_connections: "300"
+        # 自定义参数进入生成的 my.cnf（key 名注意 ini 渲染格式，首跑时按实际输出微调）
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: e2e-mysql
+              data:
+                (contains("my.cnf", 'max_connections')): true
+
+    - name: rollout-and-ready
+      try:
+        - script:
+            timeout: 8m
+            content: |
+              set -eu
+              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=7m
+              echo ROLLOUT_OK
+            check:
+              (contains($stdout, 'ROLLOUT_OK')): true
+        - assert:
+            file: ../_shared/ready-assert.yaml
+      catch:
+        - describe:
+            apiVersion: mysql.presslabs.org/v1alpha1
+            kind: MysqlCluster
+        - podLogs:
+            selector: mysql.presslabs.org/cluster=e2e
+            tail: 100

@@ -1,0 +1,4 @@
+# chainsaw --values 文件：MySQL 8.0.37（等价类 8.0.x < 8.4，生产最新 8.0）
+version: "8.0.37"
+image: docker.io/library/mysql:8.0.37
+golden: ../../golden/my.cnf-8.0.37.cnf

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/configuration-chainsaw-v1alpha2.json
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: mysql-operator-e2e
+spec:
+  execution:
+    failFast: true
+    # kind 单节点资源有限，测试串行执行
+    parallel: 1
+    forceTerminationGracePeriod: 5s
+  cleanup:
+    delayBeforeCleanup: 5s
+  timeouts:
+    apply: 2m
+    delete: 5m
+    # 集群就绪 = 拉镜像 + mysqld 初始化 + orchestrator 发现，放宽
+    assert: 10m
+    error: 10m
+    exec: 5m

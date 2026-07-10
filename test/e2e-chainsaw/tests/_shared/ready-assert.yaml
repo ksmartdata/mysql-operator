@@ -1,0 +1,17 @@
+# 集群就绪断言：StatefulSet 双副本 ready + CR Ready condition True
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: e2e-mysql
+status:
+  replicas: 2
+  readyReplicas: 2
+---
+apiVersion: mysql.presslabs.org/v1alpha1
+kind: MysqlCluster
+metadata:
+  name: e2e
+status:
+  readyNodes: 2
+  (conditions[?type == 'Ready'])[0]:
+    status: "True"

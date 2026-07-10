@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# 场景 1+2+3：创建集群 → my.cnf golden 逐字节比对 → 复制建立（condition + 主写从读）
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: create-replication
+spec:
+  template: true
+  steps:
+    - name: create-cluster
+      try:
+        - apply:
+            file: ../_shared/cluster.yaml
+        - assert:
+            file: ../_shared/ready-assert.yaml
+      catch:
+        - describe:
+            apiVersion: mysql.presslabs.org/v1alpha1
+            kind: MysqlCluster
+        - podLogs:
+            selector: app.kubernetes.io/managed-by=mysql.presslabs.org
+            tail: 100
+
+    - name: mycnf-golden
+      try:
+        - script:
+            env:
+              - name: GOLDEN_FILE
+                value: ($values.golden)
+            content: |
+              set -eu
+              if [ ! -f "$GOLDEN_FILE" ]; then
+                echo "golden 文件缺失: $GOLDEN_FILE（先按 test/e2e-chainsaw/README.md 步骤 0 在基线上生成）"
+                exit 1
+              fi
+              actual=$(mktemp)
+              kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' > "$actual"
+              # 逐字节比对：存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）
+              diff -u "$GOLDEN_FILE" "$actual"
+              echo GOLDEN_OK
+            check:
+              (contains($stdout, 'GOLDEN_OK')): true
+
+    - name: replication
+      try:
+        # 节点 condition：pod-0 为 Master，pod-1 在复制（operator↔orchestrator API 契约）
+        - assert:
+            resource:
+              apiVersion: mysql.presslabs.org/v1alpha1
+              kind: MysqlCluster
+              metadata:
+                name: e2e
+              status:
+                (nodes[?name == join('', ['e2e-mysql-0.mysql.', $namespace])])[0]:
+                  (conditions[?type == 'Master'])[0]:
+                    status: "True"
+                (nodes[?name == join('', ['e2e-mysql-1.mysql.', $namespace])])[0]:
+                  (conditions[?type == 'Replicating'])[0]:
+                    status: "True"
+        # 主库写入 → 从库读到
+        - script:
+            content: |
+              set -eu
+              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                mysql -uroot -pe2e-root-password -e \
+                "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'hello-from-master');"
+              for i in $(seq 1 30); do
+                out=$(kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                  mysql -uroot -pe2e-root-password -N -e \
+                  "SELECT val FROM e2e_test.t WHERE id=1" 2>/dev/null || true)
+                if [ "$out" = "hello-from-master" ]; then
+                  echo REPLICATION_OK
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "复制超时：从库未读到主库写入"
+              exit 1
+            check:
+              (contains($stdout, 'REPLICATION_OK')): true
+      catch:
+        - describe:
+            apiVersion: mysql.presslabs.org/v1alpha1
+            kind: MysqlCluster
+        - podLogs:
+            name: e2e-mysql-1
+            container: mysql
+            tail: 100

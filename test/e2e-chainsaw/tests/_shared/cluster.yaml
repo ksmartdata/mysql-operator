@@ -1,0 +1,26 @@
+# 与 mcamel 下发同形：显式 mysqlVersion（完整版本号）+ 显式 image（image 优先）。
+# 存储用 emptyDir：只测 operator 行为，不测持久化。
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-cluster-secret
+type: Opaque
+stringData:
+  ROOT_PASSWORD: e2e-root-password
+---
+apiVersion: mysql.presslabs.org/v1alpha1
+kind: MysqlCluster
+metadata:
+  name: e2e
+spec:
+  replicas: 2
+  secretName: e2e-cluster-secret
+  mysqlVersion: ($values.version)
+  image: ($values.image)
+  podSpec:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+  volumeSpec:
+    emptyDir: {}

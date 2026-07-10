@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# 场景 4：kill 主库 pod → orchestrator 提升从库 → 集群恢复 → 旧主以从库身份回归
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: failover
+spec:
+  template: true
+  steps:
+    - name: create-cluster
+      try:
+        - apply:
+            file: ../_shared/cluster.yaml
+        - assert:
+            file: ../_shared/ready-assert.yaml
+
+    - name: seed-data
+      try:
+        - script:
+            content: |
+              set -eu
+              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
+                mysql -uroot -pe2e-root-password -e \
+                "CREATE DATABASE IF NOT EXISTS e2e_test; CREATE TABLE IF NOT EXISTS e2e_test.t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO e2e_test.t VALUES (1, 'before-failover');"
+              echo SEED_OK
+            check:
+              (contains($stdout, 'SEED_OK')): true
+
+    - name: kill-master
+      try:
+        - script:
+            content: |
+              kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --wait=false
+
+    - name: promotion
+      try:
+        # pod-1 被提升为新主（2 副本下 orchestrator 唯一可选项）
+        - assert:
+            resource:
+              apiVersion: mysql.presslabs.org/v1alpha1
+              kind: MysqlCluster
+              metadata:
+                name: e2e
+              status:
+                (nodes[?name == join('', ['e2e-mysql-1.mysql.', $namespace])])[0]:
+                  (conditions[?type == 'Master'])[0]:
+                    status: "True"
+      catch:
+        - describe:
+            apiVersion: mysql.presslabs.org/v1alpha1
+            kind: MysqlCluster
+
+    - name: recover
+      try:
+        # 集群整体恢复，旧主 pod 重建后以从库身份回归复制
+        - assert:
+            file: ../_shared/ready-assert.yaml
+        - assert:
+            resource:
+              apiVersion: mysql.presslabs.org/v1alpha1
+              kind: MysqlCluster
+              metadata:
+                name: e2e
+              status:
+                (nodes[?name == join('', ['e2e-mysql-0.mysql.', $namespace])])[0]:
+                  (conditions[?type == 'Replicating'])[0]:
+                    status: "True"
+        # 新主可写，且 failover 前的数据仍在
+        - script:
+            content: |
+              set -eu
+              kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                mysql -uroot -pe2e-root-password -N -e \
+                "SELECT val FROM e2e_test.t WHERE id=1" | grep -q before-failover
+              kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                mysql -uroot -pe2e-root-password -e \
+                "REPLACE INTO e2e_test.t VALUES (2, 'after-failover');"
+              echo FAILOVER_OK
+            check:
+              (contains($stdout, 'FAILOVER_OK')): true
+      catch:
+        - describe:
+            apiVersion: mysql.presslabs.org/v1alpha1
+            kind: MysqlCluster
+        - podLogs:
+            selector: mysql.presslabs.org/cluster=e2e
+            tail: 100
