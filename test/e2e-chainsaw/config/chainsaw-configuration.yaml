@@ -5,7 +5,8 @@ metadata:
   name: mysql-operator-e2e
 spec:
   execution:
-    failFast: true
+    # 门禁场景：一轮跑全所有用例再汇总失败，不提前中断
+    failFast: false
     # kind 单节点资源有限，测试串行执行
     parallel: 1
     forceTerminationGracePeriod: 5s

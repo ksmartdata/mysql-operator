@@ -48,15 +48,17 @@ chainsaw test --test-dir test/e2e-chainsaw/tests \
 ## 步骤 0：生成 golden（改代码前必须先做）
 
 golden 是"旧路径 diff 为零"的机械化执行：5.7.44 / 8.0.37 的 golden 必须取自
-**改造前基线**（`extra_image` + 现网 operator v0.7.5，或本分支构建，两者应等价）。
+**改造前基线**。本分支不含任何 operator 代码改动，CI 构建产物即基线，因此步骤 0
+可直接通过 CI 完成：golden 缺失时 01 用例会把实际 my.cnf 全文打印在日志的
+`-----BEGIN ACTUAL MY.CNF-----` 标记之间，从 CI 日志采集入库即可：
 
 ```bash
-# 基线环境创建集群（用 tests/_shared/cluster.yaml 同款 spec）后：
+# 或本地生成（基线环境创建 tests/_shared/cluster.yaml 同款集群后）：
 kubectl get cm e2e-mysql -n <ns> -o jsonpath='{.data.my\.cnf}' \
   > test/e2e-chainsaw/golden/my.cnf-5.7.44.cnf   # 8.0.37 同理
 ```
 
-golden 入库后 01 用例的 golden 步骤才会通过。**8.4.9 的 golden 在阶段 3 功能落地时生成并随代码评审。**
+golden 入库后 01 用例的 golden 步骤才会通过。**8.4.9 的 golden 在 8.4 功能落地时生成并随代码评审。**
 
 ## 注意
 

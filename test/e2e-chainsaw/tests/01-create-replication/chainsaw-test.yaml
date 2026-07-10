@@ -13,13 +13,18 @@ spec:
             file: ../_shared/cluster.yaml
         - assert:
             file: ../_shared/ready-assert.yaml
+        - script:
+            timeout: 3m
+            content: |
+              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
       catch:
+        - events: {}
         - describe:
             apiVersion: mysql.presslabs.org/v1alpha1
             kind: MysqlCluster
         - podLogs:
-            selector: app.kubernetes.io/managed-by=mysql.presslabs.org
-            tail: 100
+            selector: mysql.presslabs.org/cluster=e2e
+            tail: 120
 
     - name: mycnf-golden
       try:
@@ -29,12 +34,16 @@ spec:
                 value: ($values.golden)
             content: |
               set -eu
-              if [ ! -f "$GOLDEN_FILE" ]; then
-                echo "golden 文件缺失: $GOLDEN_FILE（先按 test/e2e-chainsaw/README.md 步骤 0 在基线上生成）"
-                exit 1
-              fi
               actual=$(mktemp)
               kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' > "$actual"
+              if [ ! -f "$GOLDEN_FILE" ]; then
+                echo "golden 文件缺失: $GOLDEN_FILE"
+                echo "从下方日志采集实际 my.cnf 入库即完成步骤 0（本分支无 operator 代码改动，构建产物即基线）："
+                echo "-----BEGIN ACTUAL MY.CNF-----"
+                cat "$actual"
+                echo "-----END ACTUAL MY.CNF-----"
+                exit 1
+              fi
               # 逐字节比对：存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）
               diff -u "$GOLDEN_FILE" "$actual"
               echo GOLDEN_OK
@@ -43,22 +52,32 @@ spec:
 
     - name: replication
       try:
-        # 节点 condition：pod-0 为 Master，pod-1 在复制（operator↔orchestrator API 契约）
-        - assert:
-            resource:
-              apiVersion: mysql.presslabs.org/v1alpha1
-              kind: MysqlCluster
-              metadata:
-                name: e2e
-              status:
-                (nodes[?name == join('', ['e2e-mysql-0.mysql.', $namespace])])[0]:
-                  (conditions[?type == 'Master'])[0]:
-                    status: "True"
-                (nodes[?name == join('', ['e2e-mysql-1.mysql.', $namespace])])[0]:
-                  (conditions[?type == 'Replicating'])[0]:
-                    status: "True"
+        # 节点 condition：pod-0 为 Master、pod-1 在复制（operator↔orchestrator API 契约）
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              for i in $(seq 1 60); do
+                master=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
+                  jq -r --arg n "e2e-mysql-0.mysql.$NAMESPACE" \
+                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Master") | .status')
+                repl=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
+                  jq -r --arg n "e2e-mysql-1.mysql.$NAMESPACE" \
+                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Replicating") | .status')
+                if [ "$master" = "True" ] && [ "$repl" = "True" ]; then
+                  echo CONDITIONS_OK
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "节点 condition 超时: master=$master repl=$repl"
+              kubectl get mysqlcluster e2e -n "$NAMESPACE" -o jsonpath='{.status.nodes}'
+              exit 1
+            check:
+              (contains($stdout, 'CONDITIONS_OK')): true
         # 主库写入 → 从库读到
         - script:
+            timeout: 3m
             content: |
               set -eu
               kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
@@ -79,10 +98,10 @@ spec:
             check:
               (contains($stdout, 'REPLICATION_OK')): true
       catch:
+        - events: {}
         - describe:
             apiVersion: mysql.presslabs.org/v1alpha1
             kind: MysqlCluster
         - podLogs:
-            name: e2e-mysql-1
-            container: mysql
-            tail: 100
+            selector: mysql.presslabs.org/cluster=e2e
+            tail: 120

@@ -1,4 +1,6 @@
-# 集群就绪断言：StatefulSet 双副本 ready + CR Ready condition True
+# StatefulSet 双副本 ready（纯字段断言）。
+# CR 的 Ready condition 用 kubectl wait 脚本步骤检查（chainsaw 的 JMESPath
+# 投影断言在本 CRD 上不可靠，首轮 CI 实测 "field not found"），不在此文件断言。
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -6,12 +8,3 @@ metadata:
 status:
   replicas: 2
   readyReplicas: 2
----
-apiVersion: mysql.presslabs.org/v1alpha1
-kind: MysqlCluster
-metadata:
-  name: e2e
-status:
-  readyNodes: 2
-  (conditions[?type == 'Ready'])[0]:
-    status: "True"
