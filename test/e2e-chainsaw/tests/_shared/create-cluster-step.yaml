@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/steptemplate-chainsaw-v1alpha1.json
+# Shared step: create the cluster and wait for convergence. All three tests
+# reference it as their first step (use.template).
+# Note: file paths inside the template resolve relative to the referencing
+# test's directory, not relative to this file.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: create-cluster
+spec:
+  try:
+    - apply:
+        file: ../_shared/cluster.yaml
+    - assert:
+        file: ../_shared/ready-assert.yaml
+    # The serial waits total 655s (170+15+300+170); the timeout must exceed
+    # that, otherwise the trailing waits never get to run
+    - script:
+        timeout: 12m
+        content: |
+          set -eu
+          kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
+          # The operator may trigger another sts rollout right after the first
+          # Ready (observed in practice); wait for convergence
+          sleep 15
+          kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
+          kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s

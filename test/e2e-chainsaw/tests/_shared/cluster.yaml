@@ -1,0 +1,34 @@
+# Same shape as what mcamel deploys: explicit mysqlVersion (full version
+# number) + explicit image (image takes precedence).
+# Storage is an in-memory emptyDir: we only test operator behavior, not
+# persistence, and CI runner disks fsync slowly — the mysql:5.7 entrypoint
+# init can exceed the liveness probe's 60s window and get killed (hit in the
+# first CI round).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-cluster-secret
+type: Opaque
+stringData:
+  ROOT_PASSWORD: e2e-root-password
+---
+apiVersion: mysql.presslabs.org/v1alpha1
+kind: MysqlCluster
+metadata:
+  name: e2e
+spec:
+  replicas: 2
+  secretName: e2e-cluster-secret
+  mysqlVersion: ($values.version)
+  image: ($values.image)
+  podSpec:
+    resources:
+      requests:
+        # On a resource-starved CI runner the mysql:5.7 entrypoint may crash
+        # mid-init (the restart then skips init -> the root password is lost
+        # for good); give it enough CPU to lower the odds
+        cpu: 500m
+        memory: 768Mi
+  volumeSpec:
+    emptyDir:
+      medium: Memory

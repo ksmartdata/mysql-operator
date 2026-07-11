@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# Scenario 5: patch spec.mysqlConf -> my.cnf updated -> after the rollout the
+# cluster is Ready again and the setting is live at runtime
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: config-update
+spec:
+  template: true
+  steps:
+    - name: create-cluster
+      use:
+        template: ../_shared/create-cluster-step.yaml
+
+    - name: patch-mysql-conf
+      try:
+        - patch:
+            resource:
+              apiVersion: mysql.presslabs.org/v1alpha1
+              kind: MysqlCluster
+              metadata:
+                name: e2e
+              spec:
+                mysqlConf:
+                  max_connections: "300"
+        # The custom setting lands in the generated my.cnf
+        - script:
+            timeout: 2m
+            content: |
+              set -eu
+              for i in $(seq 1 20); do
+                if kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' | grep -q "max_connections"; then
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "max_connections never appeared in my.cnf"
+              exit 1
+
+    - name: rollout-and-ready
+      try:
+        # Best-effort wait for the rollout to converge: rollout status may
+        # pass before the operator has updated the sts template (there is a
+        # race window between the cm update and the sts config_rev bump), so
+        # this only speeds things up — whether the setting is live is judged
+        # by the @@max_connections check below
+        - script:
+            # Serial waits of 360s + 170s; the timeout must exceed their sum
+            timeout: 12m
+            content: |
+              set -eu
+              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=360s
+              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
+        # The setting is actually live: runtime @@max_connections becomes 300
+        # on both nodes
+        - script:
+            # Polls up to 60x5s=300s per pod
+            timeout: 12m
+            content: |
+              set -eu
+              . ../_shared/lib.sh
+              fetch_oppass
+              for pod in e2e-mysql-0 e2e-mysql-1; do
+                ok=0
+                for i in $(seq 1 60); do
+                  v=$(kubectl exec -n "$NAMESPACE" "$pod" -c mysql -- \
+                    mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
+                    "SELECT @@max_connections" 2>/dev/null || true)
+                  if [ "$v" = "300" ]; then ok=1; break; fi
+                  sleep 5
+                done
+                if [ "$ok" != "1" ]; then
+                  echo "@@max_connections not in effect on $pod (last read: '$v')"
+                  exit 1
+                fi
+              done

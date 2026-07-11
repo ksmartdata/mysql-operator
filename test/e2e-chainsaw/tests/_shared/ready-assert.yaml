@@ -1,0 +1,11 @@
+# Both StatefulSet replicas ready (plain field assertion).
+# The CR's Ready condition is checked by kubectl wait script steps instead
+# (chainsaw's JMESPath projection asserts are unreliable on this CRD —
+# "field not found" in the first CI round), so it is not asserted here.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: e2e-mysql
+status:
+  replicas: 2
+  readyReplicas: 2

@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/configuration-chainsaw-v1alpha2.json
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: mysql-operator-e2e
+spec:
+  execution:
+    # Gate scenario: run every test in one round and aggregate the failures
+    # instead of stopping at the first one
+    failFast: false
+    # Single-node kind cluster with limited resources; run tests serially
+    parallel: 1
+  cleanup:
+    delayBeforeCleanup: 5s
+  timeouts:
+    apply: 2m
+    # Cluster readiness = image pull + mysqld init + orchestrator discovery;
+    # keep this generous
+    assert: 10m
+    # Step/test cleanup uses the cleanup timeout (default 30s): deleting the
+    # mysql cluster waits for cascading sts/pod teardown, so relax it
+    cleanup: 5m
+    exec: 5m
+  # Global diagnostics when any test fails (runs in addition to each step's
+  # own catch blocks)
+  error:
+    catch:
+      - events: {}
+      - describe:
+          apiVersion: mysql.presslabs.org/v1alpha1
+          kind: MysqlCluster
+      - podLogs:
+          selector: mysql.presslabs.org/cluster=e2e
+          tail: 120

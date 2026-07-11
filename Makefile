@@ -15,6 +15,8 @@ GO_LDFLAGS += \
 	       -X $(GO_PROJECT)/pkg/version.gitVersion=$(VERSION) \
 	       -X $(GO_PROJECT)/pkg/version.gitCommit=$(GIT_COMMIT) \
 	       -X $(GO_PROJECT)/pkg/version.gitTreeState=$(GIT_TREE_STATE)
+# DEPRECATED: the ginkgo e2e suite in test/e2e is unmaintained and superseded by
+# the chainsaw suite in test/e2e-chainsaw (run in CI by .github/workflows/e2e-chainsaw.yml).
 GO_INTEGRATION_TESTS_SUBDIRS = test/e2e
 ifeq ($(CI),true)
 E2E_IMAGE_REGISTRY ?= $(DOCKER_REGISTRY)

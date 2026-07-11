@@ -1,0 +1,66 @@
+name: E2E chainsaw
+
+on:
+  pull_request:
+  push:
+    branches:
+      - extra_image
+
+# Cancel superseded runs when new commits are pushed to the same PR/branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Version matrix = one production version per operator code-path
+        # equivalence class (Major==5 / 8.0.x / >=8.4)
+        # TODO(once 8.4 support lands): add "8.4.9"
+        mysql: ["5.7.44", "8.0.37"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build operator image from PR checkout
+        run: |
+          # Must build from the current checkout: arm64/images/mysql-operator/Dockerfile
+          # re-downloads the extra_image branch sources from GitHub, so building
+          # with it would not test the PR code
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
+          docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: chainsaw
+
+      - name: Load operator image into kind
+        run: kind load docker-image mysql-operator:e2e --name chainsaw
+
+      - name: Install mysql-operator chart
+        run: ./hack/e2e-chainsaw-setup.sh
+
+      - name: Install chainsaw
+        uses: kyverno/action-install-chainsaw@v0.2.13
+
+      - name: Run chainsaw tests
+        run: |
+          chainsaw test \
+            --test-dir test/e2e-chainsaw/tests \
+            --config test/e2e-chainsaw/config/chainsaw-configuration.yaml \
+            --values test/e2e-chainsaw/values/mysql-${{ matrix.mysql }}.yaml
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get mysqlclusters -A -o yaml || true
+          kubectl get pods -A || true
+          kubectl logs -l app.kubernetes.io/name=mysql-operator --all-containers --tail=200 || true
