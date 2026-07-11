@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# 部署 e2e 用 mysql-operator chart（CI 与本地共用同一份命令，避免两处漂移）
+# Deploy the mysql-operator chart for e2e (shared by CI and local runs so the
+# two copies of this command cannot drift apart)
 set -euo pipefail
 
 OPERATOR_IMAGE_REPO="${OPERATOR_IMAGE_REPO:-mysql-operator}"
 OPERATOR_IMAGE_TAG="${OPERATOR_IMAGE_TAG:-e2e}"
 
-# podSecurityContext=null 对齐 mcamel 生产 chart：默认的 runAsUser 65532
-# 会让 orchestrator 容器写 /etc/orchestrator/orchestrator.conf.json 被拒（CrashLoop）
+# podSecurityContext=null matches the mcamel production chart: the default
+# runAsUser 65532 makes the orchestrator container unable to write
+# /etc/orchestrator/orchestrator.conf.json (CrashLoop)
 helm install mysql-operator ./deploy/charts/mysql-operator \
   --set podSecurityContext=null \
   --set image.repository="$OPERATOR_IMAGE_REPO" \

@@ -1,7 +1,7 @@
 #!/bin/sh
-# 用法: mysql-read-until.sh <pod> <id> <expected>
-# 轮询 <pod>，直到 sys_operator.e2e_t 中 id 对应的 val == expected。
-# READ_ITERS / READ_SLEEP 覆盖轮询参数（默认 30 次 × 2s）。
+# Usage: mysql-read-until.sh <pod> <id> <expected>
+# Polls <pod> until sys_operator.e2e_t holds val == expected for the given id.
+# READ_ITERS / READ_SLEEP override the polling parameters (default 30 x 2s).
 set -eu
 
 pod=$1; id=$2; expected=$3
@@ -22,5 +22,5 @@ while [ "$i" -le "$iters" ]; do
   sleep "$interval"
   i=$((i + 1))
 done
-echo "读取超时: $pod 未读到 e2e_t id=$id val='$expected'（最后读到: '$out'）"
+echo "read timed out: $pod never returned e2e_t id=$id val='$expected' (last read: '$out')"
 exit 1

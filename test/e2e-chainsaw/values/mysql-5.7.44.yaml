@@ -1,5 +1,6 @@
-# chainsaw --values 文件：MySQL 5.7.44（等价类 Major == 5，生产唯一 5.7 版本）
+# chainsaw --values file: MySQL 5.7.44 (equivalence class Major == 5, the
+# only 5.7 version in production)
 version: "5.7.44"
 image: docker.io/library/mysql:5.7.44
-# 相对各 test 目录（tests/<case>/）的 golden 路径
+# golden path relative to each test directory (tests/<case>/)
 golden: ../../golden/my.cnf-5.7.44.cnf

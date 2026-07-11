@@ -1,7 +1,9 @@
-# 共享函数库。chainsaw script 的工作目录是所在测试目录，
-# 用 . ../_shared/lib.sh（或脚本内 $(dirname "$0")/lib.sh）引入。
-# POSIX sh 无 pipefail：管道里 kubectl 失败不会中止 set -e 脚本，
-# 所以取密码后必须显式校验非空，否则空密码会把排障引向错误方向。
+# Shared helpers. chainsaw scripts run with the test directory as the working
+# directory; source this with . ../_shared/lib.sh (or $(dirname "$0")/lib.sh
+# from within a script).
+# POSIX sh has no pipefail: a kubectl failure inside a pipeline does not abort
+# a set -e script, so the password must be explicitly checked for emptiness —
+# otherwise an empty password sends debugging in the wrong direction.
 
 fetch_oppass() {
   _i=1
@@ -11,10 +13,10 @@ fetch_oppass() {
     if [ -n "$OPPASS" ]; then
       return 0
     fi
-    echo "获取 OPERATOR_PASSWORD 失败（第 $_i 次）" >&2
+    echo "failed to fetch OPERATOR_PASSWORD (attempt $_i)" >&2
     _i=$((_i + 1))
     sleep 2
   done
-  echo "e2e-mysql-operated secret 不可用或密码为空" >&2
+  echo "e2e-mysql-operated secret unavailable or password empty" >&2
   return 1
 }

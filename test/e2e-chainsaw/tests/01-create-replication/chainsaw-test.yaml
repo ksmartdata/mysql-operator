@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
-# 场景 1+2+3：创建集群 → my.cnf golden 逐字节比对 → 复制建立（condition + 主写从读）
+# Scenarios 1+2+3: create cluster -> byte-for-byte my.cnf golden diff ->
+# replication established (node conditions + write on master / read on replica)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -11,7 +12,8 @@ spec:
       use:
         template: ../_shared/create-cluster-step.yaml
 
-    # golden 比对紧跟创建：集群刚就绪即是文档描述的"创建完成"时点
+    # Golden diff right after creation: the just-ready cluster is the
+    # "creation done" point the docs describe
     - name: mycnf-golden
       try:
         - script:
@@ -23,16 +25,18 @@ spec:
               actual=$(mktemp)
               kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' > "$actual"
               if [ ! -f "$GOLDEN_FILE" ]; then
-                echo "golden 文件缺失: $GOLDEN_FILE"
-                echo "从下方日志采集实际 my.cnf 入库即完成步骤 0（本分支无 operator 代码改动，构建产物即基线）："
+                echo "golden file missing: $GOLDEN_FILE"
+                echo "To finish step 0, capture the actual my.cnf below and commit it (this branch has no operator code changes, so the build output is the baseline):"
                 echo "-----BEGIN ACTUAL MY.CNF-----"
                 cat "$actual"
                 echo "-----END ACTUAL MY.CNF-----"
                 exit 1
               fi
-              # 逐字节比对（仅容忍末尾换行差异，日志采集会引入）：
-              # 存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）。
-              # 末行补换行用 awk '1'：GNU sed 的 '$a\' 在 BSD/macOS sed 上是静默空操作
+              # Byte-for-byte diff, only tolerating a trailing-newline
+              # difference (log capture introduces one): any my.cnf change for
+              # existing versions must be intentional (golden/README.md).
+              # awk '1' appends the missing final newline; GNU sed's '$a\' is
+              # a silent no-op with BSD/macOS sed
               g=$(mktemp); a2=$(mktemp)
               awk '1' "$GOLDEN_FILE" > "$g"
               awk '1' "$actual" > "$a2"
@@ -40,13 +44,15 @@ spec:
 
     - name: replication
       try:
-        # 节点 condition：pod-0 为 Master、pod-1 在复制（operator↔orchestrator API 契约）
+        # Node conditions: pod-0 is Master, pod-1 is replicating (the
+        # operator<->orchestrator API contract)
         - script:
-            # 脚本内轮询 60×5s=300s，超时须大于该值，否则超时后的诊断输出跑不到
+            # The script polls 60x5s=300s; the timeout must exceed that or the
+            # post-timeout diagnostics never run
             timeout: 7m
             content: |
               sh ../_shared/wait-node-conditions.sh e2e-mysql-0=Master e2e-mysql-1=Replicating
-        # 主库写入 → 从库读到
+        # Write on the master -> read it back on the replica
         - script:
             timeout: 5m
             content: |
@@ -54,8 +60,9 @@ spec:
               sh ../_shared/mysql-write-retry.sh e2e-mysql-0 1 hello-from-master
               sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 hello-from-master
       catch:
-        # events/describe/podLogs 由全局 error.catch 收集，这里只补本用例特有的现场：
-        # mysql 容器若发生过重启，抓上一次运行（首次初始化）的死因
+        # events/describe/podLogs are collected by the global error.catch;
+        # only capture what is specific to this test: if the mysql container
+        # has restarted, grab the previous run (first init) to see why it died
         - script:
             content: |
               kubectl get pods -n "$NAMESPACE" -o wide

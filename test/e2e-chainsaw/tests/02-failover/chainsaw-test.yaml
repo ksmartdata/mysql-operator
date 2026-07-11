@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
-# 场景 4：强杀主库 pod → orchestrator DeadMaster 恢复提升从库 → 集群恢复 → 旧主以从库身份回归
+# Scenario 4: force-kill the master pod -> orchestrator DeadMaster recovery
+# promotes the replica -> cluster recovers -> old master rejoins as a replica
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -18,7 +19,8 @@ spec:
             content: |
               set -eu
               sh ../_shared/mysql-write-retry.sh e2e-mysql-0 1 before-failover
-              # 确认 seed 已复制到从库，failover 后在新主上校验这条数据才有意义
+              # Confirm the seed has replicated to the replica; only then does
+              # verifying this row on the new master after failover mean anything
               sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 before-failover
 
     - name: kill-master
@@ -27,32 +29,37 @@ spec:
             timeout: 4m
             content: |
               set -eu
-              # 强杀（跳过 preStop 的 graceful-master-takeover-auto）测的才是崩溃 failover：
-              # 优雅删除会先走计划内主从切换，orchestrator 的 DeadMaster 自动恢复
-              # （chart 默认 RecoverMasterClusterFilters=['.*']）反而测不到。
-              # kubectl delete 默认 --wait 按 UID 等待删除完成，不受 sts 同名重建干扰
+              # Force-kill (skipping the preStop graceful-master-takeover-auto
+              # hook) is what exercises crash failover: graceful deletion goes
+              # through a planned takeover first and would never hit
+              # orchestrator's DeadMaster auto-recovery (chart default
+              # RecoverMasterClusterFilters=['.*']).
+              # kubectl delete waits by UID by default (--wait), immune to the
+              # sts recreating a pod with the same name
               kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --force --grace-period=0
 
     - name: promotion-and-recover
       try:
-        # pod-1 被提升为新主（2 副本下 orchestrator 唯一可选项）
+        # pod-1 gets promoted to new master (orchestrator's only candidate
+        # with 2 replicas)
         - script:
-            # 脚本内轮询 70×5s=350s，超时须大于该值
+            # The script polls 70x5s=350s; the timeout must exceed that
             timeout: 8m
             content: |
               WAIT_ITERS=70 sh ../_shared/wait-node-conditions.sh e2e-mysql-1=Master
-        # 集群整体恢复：sts 重建出新 pod-0 并全体就绪（assert 超时 10m 覆盖全量重克隆）
+        # Whole cluster recovers: the sts recreates pod-0 and all replicas
+        # become ready (the 10m assert timeout covers the full re-clone)
         - assert:
             file: ../_shared/ready-assert.yaml
-        # 旧主以从库身份回归复制
+        # The old master rejoins replication as a replica
         - script:
-            # 串联等待 170s + 300s，超时须大于其和
+            # Serial waits of 170s + 300s; the timeout must exceed their sum
             timeout: 10m
             content: |
               set -eu
               kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
               sh ../_shared/wait-node-conditions.sh e2e-mysql-0=Replicating
-        # 新主可写，且 failover 前的数据仍在
+        # The new master is writable and the pre-failover data is still there
         - script:
             timeout: 5m
             content: |

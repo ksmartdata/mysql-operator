@@ -1,8 +1,9 @@
 #!/bin/sh
-# 用法: wait-node-conditions.sh <pod>=<条件类型>...
-#   例: wait-node-conditions.sh e2e-mysql-0=Master e2e-mysql-1=Replicating
-# 轮询 mysqlcluster/e2e 的 status.nodes（operator↔orchestrator API 契约），
-# 直到所有 <pod> 的 <条件类型> 均为 True。WAIT_ITERS 覆盖轮询次数（默认 60，间隔 5s）。
+# Usage: wait-node-conditions.sh <pod>=<condition-type>...
+#   e.g. wait-node-conditions.sh e2e-mysql-0=Master e2e-mysql-1=Replicating
+# Polls status.nodes of mysqlcluster/e2e (the operator<->orchestrator API
+# contract) until every <pod>'s <condition-type> is True.
+# WAIT_ITERS overrides the number of iterations (default 60, 5s apart).
 set -eu
 
 iters="${WAIT_ITERS:-60}"
@@ -28,6 +29,6 @@ while [ "$i" -le "$iters" ]; do
   sleep 5
   i=$((i + 1))
 done
-echo "节点 condition 超时: $*"
+echo "timed out waiting for node conditions: $*"
 kubectl get mysqlcluster e2e -n "$NAMESPACE" -o jsonpath='{.status.nodes}' || true
 exit 1

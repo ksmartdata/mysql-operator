@@ -6,7 +6,7 @@ on:
     branches:
       - extra_image
 
-# 同一 PR 连续 push 时取消旧跑，只保留最新一轮
+# Cancel superseded runs when new commits are pushed to the same PR/branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,8 +18,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 版本矩阵 = operator 代码路径等价类（Major==5 / 8.0.x / >=8.4）各取一个生产版本
-        # TODO(8.4 适配落地后): 增加 "8.4.9"
+        # Version matrix = one production version per operator code-path
+        # equivalence class (Major==5 / 8.0.x / >=8.4)
+        # TODO(once 8.4 support lands): add "8.4.9"
         mysql: ["5.7.44", "8.0.37"]
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +31,9 @@ jobs:
 
       - name: Build operator image from PR checkout
         run: |
-          # 必须从当前 checkout 构建：arm64/images/mysql-operator/Dockerfile 会从
-          # GitHub 重新下载 extra_image 分支源码，用它构建则测不到 PR 代码
+          # Must build from the current checkout: arm64/images/mysql-operator/Dockerfile
+          # re-downloads the extra_image branch sources from GitHub, so building
+          # with it would not test the PR code
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
           docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
 

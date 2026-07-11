@@ -1,12 +1,16 @@
 # DEPRECATED
 
-本目录下的 ginkgo e2e 套件（bitpoke 上游遗留）已废弃，不再维护、不做新版本适配：
+The ginkgo e2e suite in this directory (inherited from upstream bitpoke) is
+deprecated: it is no longer maintained and will not be adapted to new MySQL
+versions:
 
-- 年久失修，且用例中包含 MySQL 8.4 已移除的旧复制语法，无法覆盖新版本；
-- 实际不在任何 CI 上运行（仓库根目录的 `.drone.yml` 里有一条引用它的
-  "e2e testing" pipeline，是 bitpoke 上游遗留，依赖其 GCP secrets 与
-  drone 环境，在本 fork 上不生效）。
+- it has bit-rotted, and its cases use legacy replication syntax that MySQL
+  8.4 removed, so it cannot cover new versions;
+- it does not actually run in any CI (the "e2e testing" pipeline referencing
+  it in the repo-root `.drone.yml` is an upstream bitpoke leftover that
+  depends on their GCP secrets and drone environment, and is inert on this
+  fork).
 
-替代方案：`test/e2e-chainsaw/`（kyverno chainsaw 声明式 E2E），由
-`.github/workflows/e2e-chainsaw.yml` 在每个 PR 上按版本矩阵运行，
-详见 [test/e2e-chainsaw/README.md](../e2e-chainsaw/README.md)。
+Replacement: `test/e2e-chainsaw/` (declarative E2E with kyverno chainsaw), run
+by `.github/workflows/e2e-chainsaw.yml` on every PR across the version matrix.
+See [test/e2e-chainsaw/README.md](../e2e-chainsaw/README.md).

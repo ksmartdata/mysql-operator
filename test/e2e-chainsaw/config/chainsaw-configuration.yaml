@@ -5,20 +5,24 @@ metadata:
   name: mysql-operator-e2e
 spec:
   execution:
-    # 门禁场景：一轮跑全所有用例再汇总失败，不提前中断
+    # Gate scenario: run every test in one round and aggregate the failures
+    # instead of stopping at the first one
     failFast: false
-    # kind 单节点资源有限，测试串行执行
+    # Single-node kind cluster with limited resources; run tests serially
     parallel: 1
   cleanup:
     delayBeforeCleanup: 5s
   timeouts:
     apply: 2m
-    # 集群就绪 = 拉镜像 + mysqld 初始化 + orchestrator 发现，放宽
+    # Cluster readiness = image pull + mysqld init + orchestrator discovery;
+    # keep this generous
     assert: 10m
-    # 步骤/用例清理走 cleanup 超时（默认 30s）：删除 mysql 集群要等 sts/pod 级联回收，放宽
+    # Step/test cleanup uses the cleanup timeout (default 30s): deleting the
+    # mysql cluster waits for cascading sts/pod teardown, so relax it
     cleanup: 5m
     exec: 5m
-  # 任一用例失败时的全局诊断（与各 step 自己的 catch 叠加执行）
+  # Global diagnostics when any test fails (runs in addition to each step's
+  # own catch blocks)
   error:
     catch:
       - events: {}

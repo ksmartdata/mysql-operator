@@ -1,6 +1,9 @@
-# 与 mcamel 下发同形：显式 mysqlVersion（完整版本号）+ 显式 image（image 优先）。
-# 存储用内存介质 emptyDir：只测 operator 行为不测持久化，且 CI runner 磁盘 fsync 慢，
-# mysql:5.7 入口脚本初始化超过 liveness probe 的 60s 窗口会被强杀（首轮 CI 实测踩坑）。
+# Same shape as what mcamel deploys: explicit mysqlVersion (full version
+# number) + explicit image (image takes precedence).
+# Storage is an in-memory emptyDir: we only test operator behavior, not
+# persistence, and CI runner disks fsync slowly — the mysql:5.7 entrypoint
+# init can exceed the liveness probe's 60s window and get killed (hit in the
+# first CI round).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -21,8 +24,9 @@ spec:
   podSpec:
     resources:
       requests:
-        # CI runner 资源紧张时 mysql:5.7 入口脚本首次初始化可能中途崩掉
-        # （重启后跳过初始化 → root 密码永久丢失），给足 CPU 降低概率
+        # On a resource-starved CI runner the mysql:5.7 entrypoint may crash
+        # mid-init (the restart then skips init -> the root password is lost
+        # for good); give it enough CPU to lower the odds
         cpu: 500m
         memory: 768Mi
   volumeSpec:

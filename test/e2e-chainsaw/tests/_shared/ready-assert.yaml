@@ -1,6 +1,7 @@
-# StatefulSet 双副本 ready（纯字段断言）。
-# CR 的 Ready condition 用 kubectl wait 脚本步骤检查（chainsaw 的 JMESPath
-# 投影断言在本 CRD 上不可靠，首轮 CI 实测 "field not found"），不在此文件断言。
+# Both StatefulSet replicas ready (plain field assertion).
+# The CR's Ready condition is checked by kubectl wait script steps instead
+# (chainsaw's JMESPath projection asserts are unreliable on this CRD —
+# "field not found" in the first CI round), so it is not asserted here.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
