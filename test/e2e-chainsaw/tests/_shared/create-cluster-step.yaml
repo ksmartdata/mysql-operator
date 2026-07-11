@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/steptemplate-chainsaw-v1alpha1.json
+# 共享步骤：创建集群并等待收敛。三个用例的第一步都引用它（use.template）。
+# 注意：模板内的文件路径相对「引用方测试目录」解析，不是相对本文件。
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: create-cluster
+spec:
+  try:
+    - apply:
+        file: ../_shared/cluster.yaml
+    - assert:
+        file: ../_shared/ready-assert.yaml
+    # 串联等待共 655s（170+15+300+170），超时须大于该值，否则末段诊断永远跑不到
+    - script:
+        timeout: 12m
+        content: |
+          set -eu
+          kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
+          # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
+          sleep 15
+          kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
+          kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s

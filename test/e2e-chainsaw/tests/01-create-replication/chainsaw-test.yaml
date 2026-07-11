@@ -8,105 +8,10 @@ spec:
   template: true
   steps:
     - name: create-cluster
-      try:
-        - apply:
-            file: ../_shared/cluster.yaml
-        - assert:
-            file: ../_shared/ready-assert.yaml
-        - script:
-            timeout: 8m
-            content: |
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-              # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
-              sleep 15
-              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
-        - podLogs:
-            selector: mysql.presslabs.org/cluster=e2e
-            tail: 120
+      use:
+        template: ../_shared/create-cluster-step.yaml
 
-    - name: replication
-      try:
-        # 节点 condition：pod-0 为 Master、pod-1 在复制（operator↔orchestrator API 契约）
-        - script:
-            timeout: 5m
-            content: |
-              set -eu
-              for i in $(seq 1 60); do
-                master=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
-                  jq -r --arg n "e2e-mysql-0.mysql.$NAMESPACE" \
-                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Master") | .status')
-                repl=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
-                  jq -r --arg n "e2e-mysql-1.mysql.$NAMESPACE" \
-                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Replicating") | .status')
-                if [ "$master" = "True" ] && [ "$repl" = "True" ]; then
-                  echo CONDITIONS_OK
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "节点 condition 超时: master=$master repl=$repl"
-              kubectl get mysqlcluster e2e -n "$NAMESPACE" -o jsonpath='{.status.nodes}'
-              exit 1
-            check:
-              (contains($stdout, 'CONDITIONS_OK')): true
-        # 主库写入 → 从库读到
-        - script:
-            timeout: 3m
-            content: |
-              set -eu
-              OPPASS=$(kubectl get secret e2e-mysql-operated -n "$NAMESPACE" -o jsonpath='{.data.OPERATOR_PASSWORD}' | base64 -d)
-              # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
-              wrote=0; err=""
-              for i in $(seq 1 24); do
-                if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                  "CREATE TABLE IF NOT EXISTS sys_operator.e2e_t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO sys_operator.e2e_t VALUES (1, 'hello-from-master');" 2>&1); then
-                  wrote=1; break
-                fi
-                echo "写入尝试 $i 失败: $err"
-                sleep 5
-              done
-              if [ "$wrote" != "1" ]; then
-                echo "主库写入失败"
-                kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                  "SELECT @@hostname, @@read_only, @@super_read_only" 2>&1 || true
-                exit 1
-              fi
-              for i in $(seq 1 30); do
-                out=$(kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
-                  "SELECT val FROM sys_operator.e2e_t WHERE id=1" 2>/dev/null || true)
-                if [ "$out" = "hello-from-master" ]; then
-                  echo REPLICATION_OK
-                  exit 0
-                fi
-                sleep 2
-              done
-              echo "复制超时：从库未读到主库写入"
-              exit 1
-            check:
-              (contains($stdout, 'REPLICATION_OK')): true
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
-        - podLogs:
-            selector: mysql.presslabs.org/cluster=e2e
-            tail: 120
-        # mysql 容器若发生过重启，抓上一次运行（首次初始化）的死因
-        - script:
-            content: |
-              kubectl get pods -n "$NAMESPACE" -o wide
-              echo "===== previous logs of e2e-mysql-0/mysql (if restarted) ====="
-              kubectl logs e2e-mysql-0 -c mysql -n "$NAMESPACE" --previous --tail=80 2>&1 || true
+    # golden 比对紧跟创建：集群刚就绪即是文档描述的"创建完成"时点
     - name: mycnf-golden
       try:
         - script:
@@ -126,12 +31,33 @@ spec:
                 exit 1
               fi
               # 逐字节比对（仅容忍末尾换行差异，日志采集会引入）：
-              # 存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）
+              # 存量版本 my.cnf 任何变化都必须是有意的（golden/README.md）。
+              # 末行补换行用 awk '1'：GNU sed 的 '$a\' 在 BSD/macOS sed 上是静默空操作
               g=$(mktemp); a2=$(mktemp)
-              sed -e '$a\' "$GOLDEN_FILE" > "$g"
-              sed -e '$a\' "$actual" > "$a2"
+              awk '1' "$GOLDEN_FILE" > "$g"
+              awk '1' "$actual" > "$a2"
               diff -u "$g" "$a2"
-              echo GOLDEN_OK
-            check:
-              (contains($stdout, 'GOLDEN_OK')): true
 
+    - name: replication
+      try:
+        # 节点 condition：pod-0 为 Master、pod-1 在复制（operator↔orchestrator API 契约）
+        - script:
+            # 脚本内轮询 60×5s=300s，超时须大于该值，否则超时后的诊断输出跑不到
+            timeout: 7m
+            content: |
+              sh ../_shared/wait-node-conditions.sh e2e-mysql-0=Master e2e-mysql-1=Replicating
+        # 主库写入 → 从库读到
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              sh ../_shared/mysql-write-retry.sh e2e-mysql-0 1 hello-from-master
+              sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 hello-from-master
+      catch:
+        # events/describe/podLogs 由全局 error.catch 收集，这里只补本用例特有的现场：
+        # mysql 容器若发生过重启，抓上一次运行（首次初始化）的死因
+        - script:
+            content: |
+              kubectl get pods -n "$NAMESPACE" -o wide
+              echo "===== previous logs of e2e-mysql-0/mysql (if restarted) ====="
+              kubectl logs e2e-mysql-0 -c mysql -n "$NAMESPACE" --previous --tail=80 2>&1 || true

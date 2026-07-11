@@ -9,13 +9,14 @@
 
 ```
 test/e2e-chainsaw/
-├── config/chainsaw-configuration.yaml   # chainsaw 全局配置（串行、超时）
+├── config/chainsaw-configuration.yaml   # chainsaw 全局配置（串行、超时、全局失败诊断）
 ├── values/mysql-<version>.yaml          # 版本参数（version/image/golden 路径），--values 注入
 ├── golden/                              # my.cnf golden 文件（步骤 0 在基线上生成，见下）
 └── tests/
+    ├── _shared/                         # 共享资源：CR/断言模板、create-cluster 步骤模板、sh 工具脚本
     ├── 01-create-replication/           # 场景 1+2+3：创建、my.cnf golden、复制
-    ├── 02-failover/                     # 场景 4：kill 主库 → 提升 → 旧主回归
-    └── 03-config-update/                # 场景 5：patch mysqlConf → 滚动后回 Ready
+    ├── 02-failover/                     # 场景 4：强杀主库（崩溃 failover）→ 提升 → 旧主回归
+    └── 03-config-update/                # 场景 5：patch mysqlConf → 滚动后回 Ready 且参数生效
 ```
 
 三个 chainsaw Test 覆盖 06 文档的五个场景（1/2/3 合并共用一个集群，节省 CI 时长）。
@@ -23,23 +24,19 @@ test/e2e-chainsaw/
 ## 本地运行
 
 ```bash
-# 1. kind 集群 + 部署 operator（operator 镜像按需替换）
-kind create cluster --name chainsaw
-docker build -t mysql-operator:e2e -f arm64/images/mysql-operator/Dockerfile .
-kind load docker-image mysql-operator:e2e --name chainsaw
-# podSecurityContext=null 对齐 mcamel 生产 chart（默认 runAsUser 65532 会让
-# orchestrator 容器写 /etc/orchestrator 配置被拒而 CrashLoop）
-helm install mysql-operator ./deploy/charts/mysql-operator \
-  --set podSecurityContext=null \
-  --set image.repository=mysql-operator --set image.tag=e2e \
-  --set orchestrator.image.repository=ghcr.io/ksmartdata/mysql-operator-orchestrator \
-  --set orchestrator.image.tag=v0.7.3 \
-  --set sidecar57.image.repository=ghcr.io/ksmartdata/mysql-operator-sidecar-5.7 \
-  --set sidecar57.image.tag=v0.7.4-1 \
-  --set sidecar80.image.repository=ghcr.io/ksmartdata/mysql-operator-sidecar-8.0 \
-  --set sidecar80.image.tag=v0.7.5-1
+# 1. 构建 operator 镜像（必须从本地 checkout 构建：
+#    arm64/images/mysql-operator/Dockerfile 会从 GitHub 重新下载
+#    extra_image 分支源码，用它构建测不到本地改动）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
+docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
 
-# 2. 跑单版本
+# 2. kind 集群 + 部署 operator（与 CI 共用同一脚本，镜像可用
+#    OPERATOR_IMAGE_REPO / OPERATOR_IMAGE_TAG 覆盖）
+kind create cluster --name chainsaw
+kind load docker-image mysql-operator:e2e --name chainsaw
+./hack/e2e-chainsaw-setup.sh
+
+# 3. 跑单版本
 chainsaw test --test-dir test/e2e-chainsaw/tests \
   --config test/e2e-chainsaw/config/chainsaw-configuration.yaml \
   --values test/e2e-chainsaw/values/mysql-5.7.44.yaml
@@ -76,3 +73,19 @@ golden 入库后 01 用例的 golden 步骤才会通过。**8.4.9 的 golden 在
 - 用例存储用 emptyDir（只测 operator 行为，不测持久化）；mcamel 生产为 PVC。
 - 断言里的 JMESPath 表达式（conditions 按 type 过滤）在首次真实运行时可能需微调，
   以 chainsaw 实际报错为准。
+- 02 用例用 `--force --grace-period=0` 强杀主库：跳过 preStop 的
+  `graceful-master-takeover-auto`，验证的才是 orchestrator 的 DeadMaster
+  崩溃恢复路径；优雅删除走的是计划内主从切换，是另一条代码路径。
+
+## 已知覆盖缺口（相对已废弃的 ginkgo 套件）
+
+本套件当前只覆盖 06 文档的五个场景，旧 `test/e2e/`（ginkgo）曾覆盖而这里尚未覆盖的：
+
+- 备份/恢复（MysqlBackup CR、init from backup）；
+- 扩缩容（replicas 2→3→1）及缩容后 PVC 保留策略等不变量；
+- unhealthy 节点从 service endpoints 摘除（只影响流量，不触发 failover 的场景）；
+- `spec.readOnly: true` 只读集群；
+- PVC 持久化路径（本套件全部 emptyDir）；
+- GTID / read_only 变量级断言（旧套件直接断言 @@gtid_mode 等）。
+
+按需补场景时优先复用 `tests/_shared/` 里的步骤模板与脚本。

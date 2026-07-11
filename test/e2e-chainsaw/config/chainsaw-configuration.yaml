@@ -9,13 +9,22 @@ spec:
     failFast: false
     # kind 单节点资源有限，测试串行执行
     parallel: 1
-    forceTerminationGracePeriod: 5s
   cleanup:
     delayBeforeCleanup: 5s
   timeouts:
     apply: 2m
-    delete: 5m
     # 集群就绪 = 拉镜像 + mysqld 初始化 + orchestrator 发现，放宽
     assert: 10m
-    error: 10m
+    # 步骤/用例清理走 cleanup 超时（默认 30s）：删除 mysql 集群要等 sts/pod 级联回收，放宽
+    cleanup: 5m
     exec: 5m
+  # 任一用例失败时的全局诊断（与各 step 自己的 catch 叠加执行）
+  error:
+    catch:
+      - events: {}
+      - describe:
+          apiVersion: mysql.presslabs.org/v1alpha1
+          kind: MysqlCluster
+      - podLogs:
+          selector: mysql.presslabs.org/cluster=e2e
+          tail: 120

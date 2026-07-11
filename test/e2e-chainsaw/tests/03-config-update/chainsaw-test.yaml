@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
-# 场景 5：patch spec.mysqlConf → my.cnf 更新 → 滚动完成后集群回 Ready
+# 场景 5：patch spec.mysqlConf → my.cnf 更新 → 滚动完成后集群回 Ready 且参数运行时生效
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -8,24 +8,8 @@ spec:
   template: true
   steps:
     - name: create-cluster
-      try:
-        - apply:
-            file: ../_shared/cluster.yaml
-        - assert:
-            file: ../_shared/ready-assert.yaml
-        - script:
-            timeout: 8m
-            content: |
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-              # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
-              sleep 15
-              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
+      use:
+        template: ../_shared/create-cluster-step.yaml
 
     - name: patch-mysql-conf
       try:
@@ -45,34 +29,44 @@ spec:
               set -eu
               for i in $(seq 1 20); do
                 if kubectl get cm e2e-mysql -n "$NAMESPACE" -o jsonpath='{.data.my\.cnf}' | grep -q "max_connections"; then
-                  echo CONF_OK
                   exit 0
                 fi
                 sleep 5
               done
               echo "my.cnf 未出现 max_connections"
               exit 1
-            check:
-              (contains($stdout, 'CONF_OK')): true
 
     - name: rollout-and-ready
       try:
+        # 尽力等滚动收敛：rollout status 可能赶在 operator 更新 sts 模板之前空过
+        # （cm 更新与 sts config_rev 提升存在竞态窗口），所以它只是加速手段，
+        # 参数是否生效以下一个脚本的 @@max_connections 为权威判据
         - script:
-            timeout: 8m
+            # 串联等待 360s + 170s，超时须大于其和
+            timeout: 12m
             content: |
               set -eu
-              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=6m
+              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=360s
               kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-              echo ROLLOUT_OK
-            check:
-              (contains($stdout, 'ROLLOUT_OK')): true
-        - assert:
-            file: ../_shared/ready-assert.yaml
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
-        - podLogs:
-            selector: mysql.presslabs.org/cluster=e2e
-            tail: 120
+        # 参数真正生效：两个节点的运行时 @@max_connections 都变为 300
+        - script:
+            # 两个 pod 各轮询至多 60×5s=300s
+            timeout: 12m
+            content: |
+              set -eu
+              . ../_shared/lib.sh
+              fetch_oppass
+              for pod in e2e-mysql-0 e2e-mysql-1; do
+                ok=0
+                for i in $(seq 1 60); do
+                  v=$(kubectl exec -n "$NAMESPACE" "$pod" -c mysql -- \
+                    mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
+                    "SELECT @@max_connections" 2>/dev/null || true)
+                  if [ "$v" = "300" ]; then ok=1; break; fi
+                  sleep 5
+                done
+                if [ "$ok" != "1" ]; then
+                  echo "$pod 的 @@max_connections 未生效（最后读到: '$v'）"
+                  exit 1
+                fi
+              done

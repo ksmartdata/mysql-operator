@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
-# 场景 4：kill 主库 pod → orchestrator 提升从库 → 集群恢复 → 旧主以从库身份回归
+# 场景 4：强杀主库 pod → orchestrator DeadMaster 恢复提升从库 → 集群恢复 → 旧主以从库身份回归
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -8,51 +8,18 @@ spec:
   template: true
   steps:
     - name: create-cluster
-      try:
-        - apply:
-            file: ../_shared/cluster.yaml
-        - assert:
-            file: ../_shared/ready-assert.yaml
-        - script:
-            timeout: 8m
-            content: |
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-              # operator 在首次 Ready 后可能再触发一轮 sts 滚动（实测），等待收敛
-              sleep 15
-              kubectl rollout status sts/e2e-mysql -n "$NAMESPACE" --timeout=300s
-              kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
+      use:
+        template: ../_shared/create-cluster-step.yaml
 
     - name: seed-data
       try:
         - script:
-            timeout: 3m
+            timeout: 5m
             content: |
               set -eu
-              OPPASS=$(kubectl get secret e2e-mysql-operated -n "$NAMESPACE" -o jsonpath='{.data.OPERATOR_PASSWORD}' | base64 -d)
-              # 写入带重试：Ready 刚过时 pod 可能处于 operator 触发的瞬时滚动中
-              err=""
-              for i in $(seq 1 24); do
-                if err=$(kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                  mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                  "CREATE TABLE IF NOT EXISTS sys_operator.e2e_t (id INT PRIMARY KEY, val VARCHAR(64)); REPLACE INTO sys_operator.e2e_t VALUES (1, 'before-failover');" 2>&1); then
-                  echo SEED_OK
-                  exit 0
-                fi
-                echo "写入尝试 $i 失败: $err"
-                sleep 5
-              done
-              echo "seed 写入失败"
-              kubectl exec -n "$NAMESPACE" e2e-mysql-0 -c mysql -- \
-                mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                "SELECT @@hostname, @@read_only, @@super_read_only" 2>&1 || true
-              exit 1
-            check:
-              (contains($stdout, 'SEED_OK')): true
+              sh ../_shared/mysql-write-retry.sh e2e-mysql-0 1 before-failover
+              # 确认 seed 已复制到从库，failover 后在新主上校验这条数据才有意义
+              sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 before-failover
 
     - name: kill-master
       try:
@@ -60,96 +27,35 @@ spec:
             timeout: 4m
             content: |
               set -eu
-              # 等旧 pod 真正删除，否则后续断言读到的是陈旧状态（run 29086541909 实测 6 秒空过）
-              kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --wait=false
-              kubectl wait --for=delete pod/e2e-mysql-0 -n "$NAMESPACE" --timeout=120s || true
-              echo KILLED
+              # 强杀（跳过 preStop 的 graceful-master-takeover-auto）测的才是崩溃 failover：
+              # 优雅删除会先走计划内主从切换，orchestrator 的 DeadMaster 自动恢复
+              # （chart 默认 RecoverMasterClusterFilters=['.*']）反而测不到。
+              # kubectl delete 默认 --wait 按 UID 等待删除完成，不受 sts 同名重建干扰
+              kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --force --grace-period=0
 
     - name: promotion-and-recover
       try:
         # pod-1 被提升为新主（2 副本下 orchestrator 唯一可选项）
         - script:
-            timeout: 6m
-            content: |
-              set -eu
-              for i in $(seq 1 70); do
-                master=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
-                  jq -r --arg n "e2e-mysql-1.mysql.$NAMESPACE" \
-                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Master") | .status')
-                if [ "$master" = "True" ]; then
-                  echo PROMOTION_OK
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "提升超时：pod-1 未成为 Master"
-              kubectl get mysqlcluster e2e -n "$NAMESPACE" -o jsonpath='{.status.nodes}'
-              exit 1
-            check:
-              (contains($stdout, 'PROMOTION_OK')): true
-        # 集群整体恢复，旧主 pod 重建后以从库身份回归复制
-        - script:
+            # 脚本内轮询 70×5s=350s，超时须大于该值
             timeout: 8m
             content: |
-              set -eu
-              # 等 sts 重建出新 pod-0 并就绪（内存 emptyDir 已清空 → 全量重克隆）
-              for i in $(seq 1 36); do
-                if kubectl get pod e2e-mysql-0 -n "$NAMESPACE" >/dev/null 2>&1; then break; fi
-                sleep 5
-              done
-              kubectl wait pod/e2e-mysql-0 -n "$NAMESPACE" --for=condition=Ready --timeout=360s
-              echo NEWPOD_READY
-            check:
-              (contains($stdout, 'NEWPOD_READY')): true
+              WAIT_ITERS=70 sh ../_shared/wait-node-conditions.sh e2e-mysql-1=Master
+        # 集群整体恢复：sts 重建出新 pod-0 并全体就绪（assert 超时 10m 覆盖全量重克隆）
         - assert:
             file: ../_shared/ready-assert.yaml
+        # 旧主以从库身份回归复制
         - script:
-            timeout: 6m
+            # 串联等待 170s + 300s，超时须大于其和
+            timeout: 10m
             content: |
               set -eu
               kubectl wait mysqlcluster/e2e -n "$NAMESPACE" --for=condition=Ready=True --timeout=170s
-              for i in $(seq 1 60); do
-                repl=$(kubectl get mysqlcluster e2e -n "$NAMESPACE" -o json | \
-                  jq -r --arg n "e2e-mysql-0.mysql.$NAMESPACE" \
-                  '.status.nodes[]? | select(.name==$n) | .conditions[]? | select(.type=="Replicating") | .status')
-                if [ "$repl" = "True" ]; then
-                  echo REJOIN_OK
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "旧主回归超时"
-              kubectl get mysqlcluster e2e -n "$NAMESPACE" -o jsonpath='{.status.nodes}'
-              exit 1
-            check:
-              (contains($stdout, 'REJOIN_OK')): true
+              sh ../_shared/wait-node-conditions.sh e2e-mysql-0=Replicating
         # 新主可写，且 failover 前的数据仍在
         - script:
-            timeout: 3m
+            timeout: 5m
             content: |
               set -eu
-              OPPASS=$(kubectl get secret e2e-mysql-operated -n "$NAMESPACE" -o jsonpath='{.data.OPERATOR_PASSWORD}' | base64 -d)
-              for i in $(seq 1 24); do
-                if kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -N -e \
-                    "SELECT val FROM sys_operator.e2e_t WHERE id=1" 2>/dev/null | grep -q before-failover; then
-                  kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
-                    mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
-                    "REPLACE INTO sys_operator.e2e_t VALUES (2, 'after-failover');"
-                  echo FAILOVER_OK
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "新主验证失败：数据缺失或不可写"
-              exit 1
-            check:
-              (contains($stdout, 'FAILOVER_OK')): true
-      catch:
-        - events: {}
-        - describe:
-            apiVersion: mysql.presslabs.org/v1alpha1
-            kind: MysqlCluster
-        - podLogs:
-            selector: mysql.presslabs.org/cluster=e2e
-            tail: 120
+              READ_ITERS=24 READ_SLEEP=5 sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 before-failover
+              sh ../_shared/mysql-write-retry.sh e2e-mysql-1 2 after-failover
