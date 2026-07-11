@@ -114,18 +114,16 @@ func buildMysqlConfData(cluster *mysqlcluster.MysqlCluster) (string, error) {
 	sec := cfg.Section("mysqld")
 	version := cluster.GetMySQLSemVer()
 
-	addBConfigsToSection(
-		sec,
-		mysqlMasterSlaveBooleanConfigs,
-		getBConfigsByVersion(version),
-	)
-	// add custom configs in the latest order, so they can override the default ones
-	addKVConfigsToSection(
-		sec,
-		getKVConfigsByVersion(version),
-		convertMapToKVConfig(mysqlCommonConfigs),
-		cluster.Spec.MysqlConf,
-	)
+	// NOTE: the pass order and the map each key belongs to determine the key
+	// order in the rendered my.cnf (go-ini keeps insertion order, keys are
+	// sorted per map). For versions < 8.4 the output must stay byte-identical
+	// to what the operator has always produced — guarded by the chainsaw E2E
+	// golden tests (test/e2e-chainsaw/golden/).
+	addKVConfigsToSection(sec, getKVConfigsByVersion(version))
+	// boolean configs
+	addBConfigsToSection(sec, getBConfigsByVersion(version))
+	// add custom configs, would overwrite common configs
+	addKVConfigsToSection(sec, getCommonConfigsByVersion(version), cluster.Spec.MysqlConf)
 
 	// include configs from /etc/mysql/conf.d/*.cnf
 	_, err := sec.NewBooleanKey(fmt.Sprintf("!includedir %s", ConfDPath))
@@ -142,24 +140,24 @@ func buildMysqlConfData(cluster *mysqlcluster.MysqlCluster) (string, error) {
 
 }
 
+// mysql84 is where MySQL removed a batch of legacy replication/host-cache
+// settings. All version forks below use this single threshold: upstream
+// deprecated some of them earlier (8.0.30 / 8.3.0), but existing < 8.4
+// clusters must keep their my.cnf unchanged to avoid a fleet-wide rolling
+// restart, so the fork only switches behavior starting with 8.4.
+var mysql84 = semver.MustParse("8.4.0")
+
+// getKVConfigsByVersion returns the version-specific base configs.
 func getKVConfigsByVersion(version semver.Version) map[string]intstr.IntOrString {
-	configs := make(map[string]intstr.IntOrString)
-
 	if version.Major == 5 {
-		configs = convertMapToKVConfig(mysql5xConfigs)
-	} else {
-		configs = convertMapToKVConfig(mysql8xConfigs)
+		return convertMapToKVConfig(mysql5xConfigs)
 	}
 
-	// https://dev.mysql.com/doc/relnotes/mysql/8.3/en/news-8-3-0.html
-	if version.LT(semver.MustParse("8.3.0")) {
-		configs["relay-log-info-repository"] = intstr.Parse("TABLE")
-		configs["master-info-repository"] = intstr.Parse("TABLE")
-	}
+	configs := convertMapToKVConfig(mysql8xConfigs)
 
-	// https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-30.html
-	if version.GTE(semver.MustParse("8.0.30")) {
-		// set host_cache_size to 0 for backward compatibility
+	// 8.4 removed skip-host-cache (see getBConfigsByVersion); host_cache_size=0
+	// is its replacement — https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-30.html
+	if version.GTE(mysql84) {
 		configs["host_cache_size"] = intstr.Parse("0")
 	}
 
@@ -167,11 +165,24 @@ func getKVConfigsByVersion(version semver.Version) map[string]intstr.IntOrString
 }
 
 func getBConfigsByVersion(version semver.Version) []string {
-	var configs []string
+	configs := append([]string{}, mysqlMasterSlaveBooleanConfigs...)
 
-	// https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-30.html
-	if version.LT(semver.MustParse("8.0.30")) {
+	// removed in 8.4, replaced by host_cache_size=0 (see getKVConfigsByVersion)
+	if version.LT(mysql84) {
 		configs = append(configs, "skip-host-cache")
+	}
+
+	return configs
+}
+
+func getCommonConfigsByVersion(version semver.Version) map[string]intstr.IntOrString {
+	configs := convertMapToKVConfig(mysqlCommonConfigs)
+
+	// Crash safe; removed in 8.4 (TABLE is the only mode since 8.0)
+	// https://github.com/github/orchestrator/issues/323#issuecomment-338451838
+	if version.LT(mysql84) {
+		configs["relay-log-info-repository"] = intstr.Parse("TABLE")
+		configs["master-info-repository"] = intstr.Parse("TABLE")
 	}
 
 	return configs
