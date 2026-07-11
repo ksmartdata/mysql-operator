@@ -18,8 +18,10 @@ package mysqlcluster
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/blang/semver"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	api "github.com/bitpoke/mysql-operator/pkg/apis/mysql/v1alpha1"
@@ -42,8 +44,15 @@ func TestBuildMysqlConfDataVersionForks(t *testing.T) {
 				`(?m)^skip-host-cache$`,
 				`(?m)^relay-log-info-repository\s*= TABLE$`,
 				`(?m)^master-info-repository\s*= TABLE$`,
+				`(?m)^log-slave-updates\s*= on$`,
+				`(?m)^skip-slave-start\s*= on$`,
 			},
-			notWant: []string{`host_cache_size`},
+			notWant: []string{
+				`host_cache_size`,
+				`log-replica-updates`,
+				`skip-replica-start`,
+				`default-authentication-plugin`,
+			},
 		},
 		{
 			version: "8.0.37",
@@ -51,18 +60,30 @@ func TestBuildMysqlConfDataVersionForks(t *testing.T) {
 				`(?m)^skip-host-cache$`,
 				`(?m)^relay-log-info-repository\s*= TABLE$`,
 				`(?m)^master-info-repository\s*= TABLE$`,
+				`(?m)^log-slave-updates\s*= on$`,
+				`(?m)^skip-slave-start\s*= on$`,
+				`(?m)^default-authentication-plugin\s*= mysql_native_password$`,
 			},
-			notWant: []string{`host_cache_size`},
+			notWant: []string{
+				`host_cache_size`,
+				`log-replica-updates`,
+				`skip-replica-start`,
+			},
 		},
 		{
 			version: "8.4.9",
 			want: []string{
 				`(?m)^host_cache_size\s*= 0$`,
+				`(?m)^log-replica-updates\s*= on$`,
+				`(?m)^skip-replica-start\s*= on$`,
 			},
 			notWant: []string{
 				`skip-host-cache`,
 				`relay-log-info-repository`,
 				`master-info-repository`,
+				`log-slave-updates`,
+				`skip-slave-start`,
+				`default-authentication-plugin`,
 			},
 		},
 	}
@@ -90,5 +111,55 @@ func TestBuildMysqlConfDataVersionForks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildBashPreStopVersionForks(t *testing.T) {
+	old := buildBashPreStop(semver.MustParse("8.0.37"))
+	for _, want := range []string{`show slave status\G`, `show slave hosts\G`} {
+		if !strings.Contains(old, want) {
+			t.Errorf("preStop for < 8.4 should contain %q", want)
+		}
+	}
+
+	new84 := buildBashPreStop(semver.MustParse("8.4.9"))
+	for _, want := range []string{`SHOW REPLICA STATUS\G`, `SHOW REPLICAS`} {
+		if !strings.Contains(new84, want) {
+			t.Errorf("preStop for 8.4 should contain %q", want)
+		}
+	}
+	for _, notWant := range []string{"show slave", "StmtHolder"} {
+		if strings.Contains(new84, notWant) {
+			t.Errorf("preStop for 8.4 should NOT contain %q", notWant)
+		}
+	}
+}
+
+func TestBuildSemiSyncConfVersionForks(t *testing.T) {
+	// the < 8.4 snippet is a frozen literal: existing clusters using the
+	// rpl_semi_sync_enabled annotation must not see a ConfigMap change
+	oldWant := `
+	plugin-load-add	 = "semisync_master.so;semisync_slave.so"
+	rpl_semi_sync_master_enabled 	=	1
+	rpl_semi_sync_slave_enabled		=	1
+	rpl_semi_sync_master_wait_for_slave_count	=	1
+	`
+	if got := buildSemiSyncConf(semver.MustParse("8.0.37"), 1); got != oldWant {
+		t.Errorf("semi-sync snippet for < 8.4 changed:\ngot:  %q\nwant: %q", got, oldWant)
+	}
+
+	new84 := buildSemiSyncConf(semver.MustParse("8.4.9"), 2)
+	for _, want := range []string{
+		`plugin-load-add	 = "semisync_source.so;semisync_replica.so"`,
+		"rpl_semi_sync_source_enabled",
+		"rpl_semi_sync_replica_enabled",
+		"rpl_semi_sync_source_wait_for_replica_count	=	2",
+	} {
+		if !strings.Contains(new84, want) {
+			t.Errorf("semi-sync snippet for 8.4 should contain %q", want)
+		}
+	}
+	if strings.Contains(new84, "semisync_master") || strings.Contains(new84, "rpl_semi_sync_master") {
+		t.Errorf("semi-sync snippet for 8.4 should not contain master/slave names, got:\n%s", new84)
 	}
 }

@@ -57,12 +57,7 @@ func NewConfigMapSyncer(c client.Client, scheme *runtime.Scheme, cluster *mysqlc
 				if v == "true" {
 					half_slave_count := *cluster.Spec.Replicas / 2
 					if half_slave_count != 0 {
-						data += fmt.Sprintf(`
-	plugin-load-add	 = "semisync_master.so;semisync_slave.so"
-	rpl_semi_sync_master_enabled 	=	1
-	rpl_semi_sync_slave_enabled		=	1
-	rpl_semi_sync_master_wait_for_slave_count	=	%d
-	`, half_slave_count)
+						data += buildSemiSyncConf(cluster.GetMySQLSemVer(), half_slave_count)
 					}
 
 				}
@@ -73,23 +68,55 @@ func NewConfigMapSyncer(c client.Client, scheme *runtime.Scheme, cluster *mysqlc
 		}
 
 		if cluster.Spec.PodSpec.MysqlLifecycle == nil {
-			cm.Data[shPreStopFile] = buildBashPreStop()
+			cm.Data[shPreStopFile] = buildBashPreStop(cluster.GetMySQLSemVer())
 		}
 
 		return nil
 	})
 }
 
-func buildBashPreStop() string {
+// buildSemiSyncConf renders the semi-sync snippet appended to my.cnf when the
+// rpl_semi_sync_enabled annotation is set. 8.4 removed the master/slave-named
+// plugins and variables; the < 8.4 snippet must stay byte-identical to what
+// the operator has always produced.
+func buildSemiSyncConf(version semver.Version, halfSlaveCount int32) string {
+	if version.GTE(mysql84) {
+		return fmt.Sprintf(`
+	plugin-load-add	 = "semisync_source.so;semisync_replica.so"
+	rpl_semi_sync_source_enabled 	=	1
+	rpl_semi_sync_replica_enabled		=	1
+	rpl_semi_sync_source_wait_for_replica_count	=	%d
+	`, halfSlaveCount)
+	}
+
+	return fmt.Sprintf(`
+	plugin-load-add	 = "semisync_master.so;semisync_slave.so"
+	rpl_semi_sync_master_enabled 	=	1
+	rpl_semi_sync_slave_enabled		=	1
+	rpl_semi_sync_master_wait_for_slave_count	=	%d
+	`, halfSlaveCount)
+}
+
+func buildBashPreStop(version semver.Version) string {
+	// 8.4 removed the SHOW SLAVE statements; the script only counts output
+	// lines, so no field-name parsing needs adaptation. The < 8.4 script must
+	// stay byte-identical to what the operator has always produced.
+	replicaStatusStmt := `show slave status\G`
+	replicaHostsStmt := `show slave hosts\G`
+	if version.GTE(mysql84) {
+		replicaStatusStmt = `SHOW REPLICA STATUS\G`
+		replicaHostsStmt = `SHOW REPLICAS`
+	}
+
 	data := `#!/bin/bash
 set -ex
 
 current=$(date "+%Y-%m-%d %H:%M:%S")
 echo "[${current}]preStop is ongoing"
 read_only_status=$(mysql --defaults-file=ConfClientPathHolder -NB -e 'SELECT @@read_only')
-replica_status=$(mysql --defaults-file=ConfClientPathHolder -NB -e 'show slave status\G')
+replica_status=$(mysql --defaults-file=ConfClientPathHolder -NB -e 'ReplicaStatusStmtHolder')
 # orchestrator will isolate old master during failover
-has_replica_hosts=$(mysql --defaults-file=ConfClientPathHolder -NB -e 'show slave hosts\G')
+has_replica_hosts=$(mysql --defaults-file=ConfClientPathHolder -NB -e 'ReplicaHostsStmtHolder')
 replica_status_count=$(echo -n "$replica_status" | wc -l )
 has_replica_count=$(echo -n "$has_replica_hosts" | wc -l )
 echo "hostname=$(hostname) readonly=${read_only_status} show_slave_status=${replica_status_count}"
@@ -106,7 +133,11 @@ then
         fi
 fi
 `
-	return strings.Replace(data, "ConfClientPathHolder", confClientPath, -1)
+	data = strings.Replace(data, "ConfClientPathHolder", confClientPath, -1)
+	data = strings.Replace(data, "ReplicaStatusStmtHolder", replicaStatusStmt, -1)
+	data = strings.Replace(data, "ReplicaHostsStmtHolder", replicaHostsStmt, -1)
+
+	return data
 }
 
 func buildMysqlConfData(cluster *mysqlcluster.MysqlCluster) (string, error) {
@@ -155,10 +186,13 @@ func getKVConfigsByVersion(version semver.Version) map[string]intstr.IntOrString
 
 	configs := convertMapToKVConfig(mysql8xConfigs)
 
-	// 8.4 removed skip-host-cache (see getBConfigsByVersion); host_cache_size=0
-	// is its replacement — https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-30.html
 	if version.GTE(mysql84) {
+		// 8.4 removed skip-host-cache (see getBConfigsByVersion); host_cache_size=0
+		// is its replacement — https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-30.html
 		configs["host_cache_size"] = intstr.Parse("0")
+		// 8.4 removed the variable (mysql_native_password is disabled there);
+		// account-side authentication for 8.4 is handled separately.
+		delete(configs, "default-authentication-plugin")
 	}
 
 	return configs
@@ -178,11 +212,17 @@ func getBConfigsByVersion(version semver.Version) []string {
 func getCommonConfigsByVersion(version semver.Version) map[string]intstr.IntOrString {
 	configs := convertMapToKVConfig(mysqlCommonConfigs)
 
-	// Crash safe; removed in 8.4 (TABLE is the only mode since 8.0)
-	// https://github.com/github/orchestrator/issues/323#issuecomment-338451838
 	if version.LT(mysql84) {
+		configs["log-slave-updates"] = intstr.Parse("on")
+		configs["skip-slave-start"] = intstr.Parse("on")
+		// Crash safe; removed in 8.4 (TABLE is the only mode since 8.0)
+		// https://github.com/github/orchestrator/issues/323#issuecomment-338451838
 		configs["relay-log-info-repository"] = intstr.Parse("TABLE")
 		configs["master-info-repository"] = intstr.Parse("TABLE")
+	} else {
+		// 8.4 removed the SLAVE spellings of both settings
+		configs["log-replica-updates"] = intstr.Parse("on")
+		configs["skip-replica-start"] = intstr.Parse("on")
 	}
 
 	return configs
@@ -245,15 +285,16 @@ func writeConfigs(cfg *ini.File) (string, error) {
 	return buf.String(), nil
 }
 
-// mysqlCommonConfigs represents the configuration that mysql-operator needs by default
+// mysqlCommonConfigs represents the configuration that mysql-operator needs by
+// default; version-dependent keys (log-slave-updates, skip-slave-start,
+// relay/master-info-repository and their 8.4 replacements) are added in
+// getCommonConfigsByVersion.
 var mysqlCommonConfigs = map[string]string{
-	"log-bin":           "/var/lib/mysql/mysql-bin",
-	"log-slave-updates": "on",
+	"log-bin": "/var/lib/mysql/mysql-bin",
 
 	// start server without read-only because of https://bugs.mysql.com/bug.php?id=100283
 	// so we can restore from a backup (see https://github.com/bitpoke/mysql-operator/issues/509)
 	//"read-only":        "on",
-	"skip-slave-start": "on",
 
 	// Crash safe
 	"relay-log-recovery": "on",
