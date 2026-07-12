@@ -271,7 +271,11 @@ func (c *MysqlCluster) GetSidecarImage() string {
 	if c.Spec.SidecarImage != "" {
 		return c.Spec.SidecarImage
 	}
-	// decide the sidecar image based on mysql version
+	// decide the sidecar image based on mysql version; 8.4 needs its own
+	// image because xtrabackup 8.0 cannot back up 8.4 servers
+	if c.GetMySQLSemVer().GTE(constants.MySQL84) {
+		return options.GetOptions().SidecarMysql84Image
+	}
 	if c.GetMySQLSemVer().Major == 8 {
 		return options.GetOptions().SidecarMysql8Image
 	}

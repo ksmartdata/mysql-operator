@@ -110,6 +110,20 @@ var _ = Describe("Test MySQL cluster wrapper", func() {
 		Expect(cluster.GetMysqlImage()).To(Equal("docker.io/library/mysql:8.4.9"))
 	})
 
+	It("should pick the sidecar image by version equivalence class", func() {
+		opt := options.GetOptions()
+
+		cluster.Spec.MysqlVersion = "5.7.44"
+		Expect(cluster.GetSidecarImage()).To(Equal(opt.SidecarMysql57Image))
+
+		cluster.Spec.MysqlVersion = "8.0.37"
+		Expect(cluster.GetSidecarImage()).To(Equal(opt.SidecarMysql8Image))
+
+		// 8.4 needs xtrabackup 8.4: the 8.0 sidecar cannot back it up
+		cluster.Spec.MysqlVersion = "8.4.9"
+		Expect(cluster.GetSidecarImage()).To(Equal(opt.SidecarMysql84Image))
+	})
+
 	DescribeTable("defaults for innodb-buffer-pool-size and innodb-buffer-pool-instances",
 		func(mem, cpu, expectedBufferSize, expectedBufferInstances string) {
 			cluster = New(&api.MysqlCluster{
