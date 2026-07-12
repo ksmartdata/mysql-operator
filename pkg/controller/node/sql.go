@@ -121,9 +121,14 @@ func (r *nodeSQLRunner) ChangeMasterTo(ctx context.Context, masterHost, user, pa
 
 func changeMasterToQuery(v semver.Version) string {
 	if v.GTE(constants.MySQL84) {
+		// GET_SOURCE_PUBLIC_KEY: the 8.4 replication user authenticates with
+		// caching_sha2_password (mysql_native_password is gone), and without
+		// TLS the replica's IO thread needs the RSA key exchange, same as the
+		// go-sql-driver clients do automatically
 		return `
       STOP REPLICA;
 	  CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1,
+		GET_SOURCE_PUBLIC_KEY=1,
 		SOURCE_HOST=?,
 		SOURCE_USER=?,
 		SOURCE_PASSWORD=?,
