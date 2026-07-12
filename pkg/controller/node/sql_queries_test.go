@@ -65,7 +65,7 @@ func TestReplicationQueriesLegacyFrozen(t *testing.T) {
 
 func TestReplicationQueries84(t *testing.T) {
 	for query, wants := range map[string][]string{
-		changeMasterToQuery(v849):           {"STOP REPLICA;", "CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1", "SOURCE_HOST=?", "SOURCE_CONNECT_RETRY=?"},
+		changeMasterToQuery(v849):           {"STOP REPLICA;", "CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1", "GET_SOURCE_PUBLIC_KEY=1", "SOURCE_HOST=?", "SOURCE_CONNECT_RETRY=?"},
 		startReplicationQuery(v849):         {"START REPLICA;"},
 		startReplicationFallbackQuery(v849): {"RESET REPLICA;", "START REPLICA IO_THREAD;", "STOP REPLICA IO_THREAD;"},
 		resetBinaryLogsQuery(v849):          {"RESET BINARY LOGS AND GTIDS"},
