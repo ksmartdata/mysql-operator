@@ -69,3 +69,22 @@ jobs:
           kubectl get mysqlclusters -A -o yaml || true
           kubectl get pods -A || true
           kubectl logs -l app.kubernetes.io/name=mysql-operator --all-containers --tail=200 || true
+
+  # All production images ship linux/arm64 alongside amd64. Build the
+  # orchestrator image natively on the free public-repo ARM runner so arch
+  # regressions (cgo/sqlite, base-image availability) surface at PR time
+  # instead of at release time. Build-only: the functional E2E runs on amd64.
+  orchestrator-image-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build orchestrator image (arm64)
+        run: docker build -t mysql-operator-orchestrator:e2e-arm64 -f images/mysql-operator-orchestrator/Dockerfile .
+
+      - name: Smoke-test binaries
+        run: |
+          docker run --rm --entrypoint /usr/local/orchestrator/orchestrator mysql-operator-orchestrator:e2e-arm64 --version
+          docker run --rm --entrypoint /usr/local/bin/dockerize mysql-operator-orchestrator:e2e-arm64 --version
+          docker run --rm --entrypoint /usr/local/bin/orc-helper mysql-operator-orchestrator:e2e-arm64 --help
