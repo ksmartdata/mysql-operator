@@ -83,6 +83,12 @@ const (
 var (
 	// MySQLDefaultVersion is the version for mysql that should be used
 	MySQLDefaultVersion = semver.MustParse("5.7.35")
+	// MySQL84 is where MySQL removed the legacy replication SQL spellings
+	// (SLAVE/MASTER), the *-info-repository settings, skip-host-cache and the
+	// old semi-sync plugins. All 8.4 version forks across the operator use
+	// this single threshold: behavior for versions below it must stay
+	// unchanged, only >= 8.4 takes the new paths.
+	MySQL84 = semver.MustParse("8.4.0")
 	// MySQLTagsToSemVer maps simple version to semver versions
 	MySQLTagsToSemVer = map[string]string{
 		"5.7": "5.7.35",

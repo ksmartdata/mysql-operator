@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/blang/semver"
 	"github.com/go-ini/ini"
 
 	"github.com/bitpoke/mysql-operator/pkg/util/constants"
@@ -243,7 +244,7 @@ func initFileQuery(cfg *Config, gtidPurged string) []byte {
 	// if just recently the node was initialized from a backup then a RESET SLAVE ALL query should be ran
 	// to avoid not replicate from previous master.
 	if cfg.ShouldCloneFromBucket() {
-		queries = append(queries, "RESET SLAVE ALL")
+		queries = append(queries, resetReplicaAllQuery(cfg.MySQLVersion))
 	}
 
 	if len(cfg.InitFileExtraSQL[0]) > 0 {
@@ -251,6 +252,17 @@ func initFileQuery(cfg *Config, gtidPurged string) []byte {
 	}
 
 	return []byte(strings.Join(queries, ";\n") + ";\n")
+}
+
+// resetReplicaAllQuery returns the statement that discards the replication
+// configuration cloned from the backup source: 8.4 removed RESET SLAVE.
+// An unparsable MySQLVersion is the zero semver, which takes the legacy path.
+func resetReplicaAllQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return "RESET REPLICA ALL"
+	}
+
+	return "RESET SLAVE ALL"
 }
 
 func createUserQuery(name, pass, host string, rights ...interface{}) []string {

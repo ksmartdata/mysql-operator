@@ -33,6 +33,7 @@ import (
 	"github.com/presslabs/controller-util/pkg/syncer"
 
 	"github.com/bitpoke/mysql-operator/pkg/internal/mysqlcluster"
+	"github.com/bitpoke/mysql-operator/pkg/util/constants"
 )
 
 // NewConfigMapSyncer returns config map syncer
@@ -171,12 +172,11 @@ func buildMysqlConfData(cluster *mysqlcluster.MysqlCluster) (string, error) {
 
 }
 
-// mysql84 is where MySQL removed a batch of legacy replication/host-cache
-// settings. All version forks below use this single threshold: upstream
-// deprecated some of them earlier (8.0.30 / 8.3.0), but existing < 8.4
-// clusters must keep their my.cnf unchanged to avoid a fleet-wide rolling
-// restart, so the fork only switches behavior starting with 8.4.
-var mysql84 = semver.MustParse("8.4.0")
+// mysql84 is the shared 8.4 fork threshold: upstream deprecated some of the
+// settings below earlier (8.0.30 / 8.3.0), but existing < 8.4 clusters must
+// keep their my.cnf unchanged to avoid a fleet-wide rolling restart, so the
+// fork only switches behavior starting with 8.4.
+var mysql84 = constants.MySQL84
 
 // getKVConfigsByVersion returns the version-specific base configs.
 func getKVConfigsByVersion(version semver.Version) map[string]intstr.IntOrString {

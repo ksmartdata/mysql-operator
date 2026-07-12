@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver"
+
 	// add mysql driver
 	_ "github.com/go-sql-driver/mysql"
 
@@ -49,16 +51,20 @@ type SQLInterface interface {
 type nodeSQLRunner struct {
 	dsn  string
 	host string
+	// mysqlVersion selects the replication SQL dialect: >= 8.4 uses the
+	// REPLICA / REPLICATION SOURCE spellings, older versions the legacy ones
+	mysqlVersion semver.Version
 
 	enableBinLog bool
 }
 
-type sqlFactoryFunc func(dsn, host string) SQLInterface
+type sqlFactoryFunc func(dsn, host string, mysqlVersion semver.Version) SQLInterface
 
-func newNodeConn(dsn, host string) SQLInterface {
+func newNodeConn(dsn, host string, mysqlVersion semver.Version) SQLInterface {
 	return &nodeSQLRunner{
 		dsn:          dsn,
 		host:         host,
+		mysqlVersion: mysqlVersion,
 		enableBinLog: false,
 	}
 }
@@ -93,7 +99,39 @@ func (r *nodeSQLRunner) DisableSuperReadOnly(ctx context.Context) (func(), error
 // ChangeMasterTo changes the master host and starts slave.
 func (r *nodeSQLRunner) ChangeMasterTo(ctx context.Context, masterHost, user, pass string) error {
 	// slave node
-	query := `
+	if err := r.runQuery(ctx, changeMasterToQuery(r.mysqlVersion),
+		masterHost, user, pass, connRetry,
+	); err != nil {
+		return fmt.Errorf("failed to configure slave node, err: %s", err)
+	}
+
+	if err := r.runQuery(ctx, startReplicationQuery(r.mysqlVersion)); err != nil {
+		log.Info("failed to start slave in the simple mode, trying a second method", "host", r.Host())
+		// TODO: https://bugs.mysql.com/bug.php?id=83713
+		if err := r.runQuery(ctx, startReplicationFallbackQuery(r.mysqlVersion)); err != nil {
+			return fmt.Errorf("failed to start slave node, err: %s", err)
+		}
+	}
+	return nil
+}
+
+// The replication SQL below exists in two dialects: 8.4 removed the legacy
+// SLAVE / MASTER spellings, versions < 8.4 keep the exact statements the
+// operator has always run (frozen literals, locked by unit tests).
+
+func changeMasterToQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return `
+      STOP REPLICA;
+	  CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1,
+		SOURCE_HOST=?,
+		SOURCE_USER=?,
+		SOURCE_PASSWORD=?,
+		SOURCE_CONNECT_RETRY=?;
+	`
+	}
+
+	return `
       STOP SLAVE;
 	  CHANGE MASTER TO MASTER_AUTO_POSITION=1,
 		MASTER_HOST=?,
@@ -101,28 +139,44 @@ func (r *nodeSQLRunner) ChangeMasterTo(ctx context.Context, masterHost, user, pa
 		MASTER_PASSWORD=?,
 		MASTER_CONNECT_RETRY=?;
 	`
-	if err := r.runQuery(ctx, query,
-		masterHost, user, pass, connRetry,
-	); err != nil {
-		return fmt.Errorf("failed to configure slave node, err: %s", err)
+}
+
+func startReplicationQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return "START REPLICA;"
 	}
 
-	query = "START SLAVE;"
-	if err := r.runQuery(ctx, query); err != nil {
-		log.Info("failed to start slave in the simple mode, trying a second method", "host", r.Host())
-		// TODO: https://bugs.mysql.com/bug.php?id=83713
-		query2 := `
+	return "START SLAVE;"
+}
+
+func startReplicationFallbackQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return `
+		  RESET REPLICA;
+		  START REPLICA IO_THREAD;
+		  STOP REPLICA IO_THREAD;
+		  RESET REPLICA;
+		  START REPLICA;
+		`
+	}
+
+	return `
 		  reset slave;
 		  start slave IO_THREAD;
 		  stop slave IO_THREAD;
 		  reset slave;
 		  start slave;
 		`
-		if err := r.runQuery(ctx, query2); err != nil {
-			return fmt.Errorf("failed to start slave node, err: %s", err)
-		}
+}
+
+// resetBinaryLogsQuery returns the statement that purges the binary logs and
+// GTID state before GTID_PURGED can be set: 8.4 removed RESET MASTER.
+func resetBinaryLogsQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return "RESET BINARY LOGS AND GTIDS"
 	}
-	return nil
+
+	return "RESET MASTER"
 }
 
 // MarkConfigurationDone write in a MEMORY table value. The readiness probe checks for that value to exist to succeed.
@@ -227,11 +281,12 @@ func (r *nodeSQLRunner) SetPurgedGTID(ctx context.Context) error {
 	  SET @@SESSION.SQL_LOG_BIN = 0;
 	  START TRANSACTION;
 		SELECT value INTO @gtid FROM %[1]s.%[2]s WHERE name='%[3]s';
-		RESET MASTER;
+		%[5]s;
 		SET @@GLOBAL.GTID_PURGED = @gtid;
 		REPLACE INTO %[1]s.%[2]s VALUES ('%[4]s', @gtid);
 	  COMMIT;
-    `, constants.OperatorDbName, constants.OperatorStatusTableName, "backup_gtid_purged", "set_gtid_purged")
+    `, constants.OperatorDbName, constants.OperatorStatusTableName, "backup_gtid_purged", "set_gtid_purged",
+		resetBinaryLogsQuery(r.mysqlVersion))
 
 	if err := r.runQuery(ctx, query); err != nil {
 		return err
