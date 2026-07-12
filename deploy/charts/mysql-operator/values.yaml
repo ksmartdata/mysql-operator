@@ -21,6 +21,12 @@ sidecar80:
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
 
+sidecar84:
+  image:
+    repository: ghcr.io/ksmartdata/mysql-operator-sidecar-8.4
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+
 metricsExporter:
   image:
     repository: docker.io/prom/mysqld-exporter
