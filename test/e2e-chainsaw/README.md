@@ -34,13 +34,18 @@ Three chainsaw Tests cover the five scenarios of the 06 design doc
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
 docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
 
-# 2. kind cluster + deploy the operator (same script as CI; override the
-#    image with OPERATOR_IMAGE_REPO / OPERATOR_IMAGE_TAG)
+# 2. Build the orchestrator image (Percona orchestrator fork built from
+#    source; the gate must test the orchestrator shipped by the branch)
+docker build -t mysql-operator-orchestrator:e2e -f images/mysql-operator-orchestrator/Dockerfile .
+
+# 3. kind cluster + deploy the operator (same script as CI; override images
+#    with OPERATOR_IMAGE_* / ORCHESTRATOR_IMAGE_* env vars)
 kind create cluster --name chainsaw
 kind load docker-image mysql-operator:e2e --name chainsaw
+kind load docker-image mysql-operator-orchestrator:e2e --name chainsaw
 ./hack/e2e-chainsaw-setup.sh
 
-# 3. Run a single version
+# 4. Run a single version
 chainsaw test --test-dir test/e2e-chainsaw/tests \
   --config test/e2e-chainsaw/config/chainsaw-configuration.yaml \
   --values test/e2e-chainsaw/values/mysql-5.7.44.yaml
