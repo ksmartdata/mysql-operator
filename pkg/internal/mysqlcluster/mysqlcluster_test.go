@@ -101,6 +101,15 @@ var _ = Describe("Test MySQL cluster wrapper", func() {
 		Expect(cluster.ShouldHaveInitContainerForMysql()).To(Equal(false))
 	})
 
+	It("should resolve the 8.4 tag alias and image", func() {
+		cluster.Spec.MysqlVersion = "8.4"
+
+		// without the alias the tag would parse to 0.0.0 and every 8.4
+		// version fork would silently take the legacy (< 8.4) path
+		Expect(cluster.GetMySQLSemVer().String()).To(Equal("8.4.9"))
+		Expect(cluster.GetMysqlImage()).To(Equal("docker.io/library/mysql:8.4.9"))
+	})
+
 	DescribeTable("defaults for innodb-buffer-pool-size and innodb-buffer-pool-instances",
 		func(mem, cpu, expectedBufferSize, expectedBufferInstances string) {
 			cluster = New(&api.MysqlCluster{
