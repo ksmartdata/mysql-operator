@@ -37,13 +37,18 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
           docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
 
+      - name: Build orchestrator image from PR checkout
+        run: docker build -t mysql-operator-orchestrator:e2e -f images/mysql-operator-orchestrator/Dockerfile .
+
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
         with:
           cluster_name: chainsaw
 
-      - name: Load operator image into kind
-        run: kind load docker-image mysql-operator:e2e --name chainsaw
+      - name: Load images into kind
+        run: |
+          kind load docker-image mysql-operator:e2e --name chainsaw
+          kind load docker-image mysql-operator-orchestrator:e2e --name chainsaw
 
       - name: Install mysql-operator chart
         run: ./hack/e2e-chainsaw-setup.sh

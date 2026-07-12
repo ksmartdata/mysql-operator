@@ -30,6 +30,7 @@ on:
           - 'mysql-operator-sidecar-80'
           - 'redisinsight'
           - 'mysql-operator'
+          - 'mysql-operator-orchestrator'
           - 'redis-shake-v4'
       upstream-ref:
         description: 'upstream ref'
@@ -900,5 +901,36 @@ jobs:
           tags: |
             ${{ env.ONLINE_REGISTER }}/mysql-operator:${{ inputs.tag }}
             ${{ env.ONLINE_REGISTER }}/mysql-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  mysql-operator-orchestrator:
+    if: ${{ inputs.job == 'mysql-operator-orchestrator' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone mysql-operator repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2.0.0
+      - name: mysql-operator-orchestrator
+        uses: docker/build-push-action@v3.1.1
+        with:
+          context: ./
+          file: ./images/mysql-operator-orchestrator/Dockerfile
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push: true
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/mysql-operator-orchestrator:${{ inputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
