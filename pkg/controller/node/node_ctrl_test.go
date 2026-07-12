@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/blang/semver"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -62,7 +64,7 @@ var _ = Describe("MysqlNode controller", func() {
 		c = mgr.GetClient()
 
 		sqli = &fakeSQLRunner{}
-		newNodeConn := func(dsn, host string) SQLInterface {
+		newNodeConn := func(dsn, host string, mysqlVersion semver.Version) SQLInterface {
 			return sqli
 		}
 

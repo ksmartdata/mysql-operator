@@ -330,7 +330,7 @@ func (r *ReconcileMysqlNode) getMySQLConnection(cluster *mysqlcluster.MysqlClust
 		c.User, c.Password, host, constants.MysqlPort,
 	)
 
-	return r.sqlFactory(dsn, host)
+	return r.sqlFactory(dsn, host, cluster.GetMySQLSemVer())
 }
 
 type credentials struct {

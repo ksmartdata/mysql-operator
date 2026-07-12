@@ -19,11 +19,20 @@ package sidecar
 import (
 	"strings"
 
+	"github.com/blang/semver"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Test sidecar appconf", func() {
+	It("should pick the reset replica query by version", func() {
+		// < 8.4 is a frozen literal; the zero version (unparsable
+		// MY_MYSQL_VERSION) must take the legacy path too
+		Expect(resetReplicaAllQuery(semver.MustParse("8.0.37"))).To(Equal("RESET SLAVE ALL"))
+		Expect(resetReplicaAllQuery(semver.Version{})).To(Equal("RESET SLAVE ALL"))
+		Expect(resetReplicaAllQuery(semver.MustParse("8.4.9"))).To(Equal("RESET REPLICA ALL"))
+	})
+
 	It("should create the right query for users", func() {
 		Expect(createUserQuery("uName", "uPass", "%")).To(ConsistOf(
 			"DROP USER IF EXISTS uName@'%'",
