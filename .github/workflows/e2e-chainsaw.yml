@@ -87,4 +87,10 @@ jobs:
         run: |
           docker run --rm --entrypoint /usr/local/orchestrator/orchestrator mysql-operator-orchestrator:e2e-arm64 --version
           docker run --rm --entrypoint /usr/local/bin/dockerize mysql-operator-orchestrator:e2e-arm64 --version
-          docker run --rm --entrypoint /usr/local/bin/orc-helper mysql-operator-orchestrator:e2e-arm64 --help
+          # orc-helper is a k8s client: without a kubeconfig it exits 1 with a
+          # config error even for --help. The error message still proves the
+          # arm64 binary executes (a wrong-arch binary fails with "exec format
+          # error" instead)
+          out=$(docker run --rm --entrypoint /usr/local/bin/orc-helper mysql-operator-orchestrator:e2e-arm64 --help 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -qE "unable to get configuration|Usage"
