@@ -22,6 +22,18 @@ spec:
               # Confirm the seed has replicated to the replica; only then does
               # verifying this row on the new master after failover mean anything
               sh ../_shared/mysql-read-until.sh e2e-mysql-1 1 before-failover
+              # Force the freshly created table's pages to disk on the future
+              # clone donor: killing the master right after seeding recreates
+              # pod-0, whose xtrabackup clone can otherwise copy a not-yet-
+              # flushed .ibd and fail prepare with "Could not find any file
+              # associated with the tablespace ID" (memory emptyDir + slow
+              # runners widen the window; product-side investigation tracked
+              # separately)
+              . ../_shared/lib.sh
+              fetch_oppass
+              kubectl exec -n "$NAMESPACE" e2e-mysql-1 -c mysql -- \
+                mysql --no-defaults -h127.0.0.1 -usys_operator -p"$OPPASS" -e \
+                "FLUSH TABLE sys_operator.e2e_t FOR EXPORT; UNLOCK TABLES;"
 
     - name: kill-master
       try:
@@ -40,13 +52,6 @@ spec:
 
     - name: promotion-and-recover
       try:
-        # pod-1 gets promoted to new master (orchestrator's only candidate
-        # with 2 replicas)
-        - script:
-            # The script polls 70x5s=350s; the timeout must exceed that
-            timeout: 8m
-            content: |
-              WAIT_ITERS=70 sh ../_shared/wait-node-conditions.sh e2e-mysql-1=Master
         # The xtrabackup stream clone of the recreated pod-0 occasionally hits
         # a race on slow runners: prepare fails with "Could not find any file
         # associated with the tablespace ID" and the pod crashloops (product-
@@ -70,6 +75,13 @@ spec:
               kubectl logs e2e-mysql-0 -n "$NAMESPACE" -c init --previous --tail=30 2>/dev/null || true
               echo "deleting pod-0 for one clone retry"
               kubectl delete pod e2e-mysql-0 -n "$NAMESPACE" --ignore-not-found --wait=false
+        # pod-1 gets promoted to new master (orchestrator's only candidate
+        # with 2 replicas)
+        - script:
+            # The script polls 70x5s=350s; the timeout must exceed that
+            timeout: 8m
+            content: |
+              WAIT_ITERS=70 sh ../_shared/wait-node-conditions.sh e2e-mysql-1=Master
         # Whole cluster recovers: the sts recreates pod-0 and all replicas
         # become ready (the 10m assert timeout covers the full re-clone)
         - assert:
