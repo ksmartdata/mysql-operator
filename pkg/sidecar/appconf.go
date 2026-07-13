@@ -94,7 +94,7 @@ func RunConfigCommand(cfg *Config) error {
 	}
 
 	// mysql client connect credentials
-	if clientCFG, err = getClientConfigs(cfg.OperatorUser, cfg.OperatorPassword); err != nil {
+	if clientCFG, err = getClientConfigs(cfg.OperatorUser, cfg.OperatorPassword, cfg.MySQLVersion); err != nil {
 		return fmt.Errorf("failed to get client configs: %s", err)
 	}
 
@@ -103,7 +103,7 @@ func RunConfigCommand(cfg *Config) error {
 	}
 
 	// mysql heartbeat connect credentials
-	if heartbeatCFG, err = getClientConfigs(cfg.HeartBeatUser, cfg.HeartBeatPassword); err != nil {
+	if heartbeatCFG, err = getClientConfigs(cfg.HeartBeatUser, cfg.HeartBeatPassword, cfg.MySQLVersion); err != nil {
 		return fmt.Errorf("failed to get heartbeat configs: %s", err)
 	}
 
@@ -114,7 +114,7 @@ func RunConfigCommand(cfg *Config) error {
 	return nil
 }
 
-func getClientConfigs(user, pass string) (*ini.File, error) {
+func getClientConfigs(user, pass string, v semver.Version) (*ini.File, error) {
 	cfg := ini.Empty()
 	// create client.cnf file
 	client := cfg.Section("client")
@@ -130,6 +130,18 @@ func getClientConfigs(user, pass string) (*ini.File, error) {
 	}
 	if _, err := client.NewKey("password", pass); err != nil {
 		return nil, err
+	}
+
+	// MySQL >= 8.4 creates these users with caching_sha2_password, which
+	// refuses full authentication over cleartext TCP. pt-heartbeat/pt-kill
+	// read this file through a client library that neither negotiates TLS by
+	// default nor fetches the server RSA key, so force TLS (the server certs
+	// are auto-generated at initialization). The mysql/mysqladmin consumers
+	// of these files accept ssl-mode as well.
+	if v.GTE(constants.MySQL84) {
+		if _, err := client.NewKey("ssl-mode", "REQUIRED"); err != nil {
+			return nil, err
+		}
 	}
 
 	return cfg, nil
