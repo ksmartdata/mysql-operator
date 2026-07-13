@@ -16,6 +16,8 @@ SIDECAR57_IMAGE_REPO="${SIDECAR57_IMAGE_REPO:-ghcr.io/ksmartdata/mysql-operator-
 SIDECAR57_IMAGE_TAG="${SIDECAR57_IMAGE_TAG:-v0.7.4-1}"
 SIDECAR80_IMAGE_REPO="${SIDECAR80_IMAGE_REPO:-ghcr.io/ksmartdata/mysql-operator-sidecar-8.0}"
 SIDECAR80_IMAGE_TAG="${SIDECAR80_IMAGE_TAG:-v0.7.5-1}"
+SIDECAR84_IMAGE_REPO="${SIDECAR84_IMAGE_REPO:-ghcr.io/ksmartdata/mysql-operator-sidecar-8.4}"
+SIDECAR84_IMAGE_TAG="${SIDECAR84_IMAGE_TAG:-v0.8.1}"
 
 # podSecurityContext=null matches the mcamel production chart: the default
 # runAsUser 65532 makes the orchestrator container unable to write
@@ -32,4 +34,6 @@ helm install mysql-operator ./deploy/charts/mysql-operator \
   --set sidecar57.image.tag="$SIDECAR57_IMAGE_TAG" \
   --set sidecar80.image.repository="$SIDECAR80_IMAGE_REPO" \
   --set sidecar80.image.tag="$SIDECAR80_IMAGE_TAG" \
+  --set sidecar84.image.repository="$SIDECAR84_IMAGE_REPO" \
+  --set sidecar84.image.tag="$SIDECAR84_IMAGE_TAG" \
   --wait --timeout 5m

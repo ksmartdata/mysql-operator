@@ -1,0 +1,5 @@
+# chainsaw --values file: MySQL 8.4.9 (equivalence class >= 8.4, the 8.4 LTS
+# version pinned across the whole stack)
+version: "8.4.9"
+image: docker.io/library/mysql:8.4.9
+golden: ../../golden/my.cnf-8.4.9.cnf
