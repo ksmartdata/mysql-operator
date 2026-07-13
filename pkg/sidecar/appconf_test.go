@@ -33,6 +33,28 @@ var _ = Describe("Test sidecar appconf", func() {
 		Expect(resetReplicaAllQuery(semver.MustParse("8.4.9"))).To(Equal("RESET REPLICA ALL"))
 	})
 
+	It("should render the client config by version", func() {
+		render := func(v semver.Version) string {
+			cfg, err := getClientConfigs("uName", "uPass", v)
+			Expect(err).To(Succeed())
+			var sb strings.Builder
+			_, err = cfg.WriteTo(&sb)
+			Expect(err).To(Succeed())
+			return sb.String()
+		}
+
+		// < 8.4 is a frozen literal; the zero version (unparsable
+		// MY_MYSQL_VERSION) must take the legacy path too
+		legacy := "[client]\nhost     = 127.0.0.1\nport     = 3306\nuser     = uName\npassword = uPass\n\n"
+		Expect(render(semver.MustParse("5.7.44"))).To(Equal(legacy))
+		Expect(render(semver.MustParse("8.0.37"))).To(Equal(legacy))
+		Expect(render(semver.Version{})).To(Equal(legacy))
+
+		// >= 8.4: caching_sha2_password refuses full authentication over
+		// cleartext TCP, the percona-toolkit connections need TLS
+		Expect(render(semver.MustParse("8.4.9"))).To(ContainSubstring("ssl-mode = REQUIRED"))
+	})
+
 	It("should create the right query for users", func() {
 		Expect(createUserQuery("uName", "uPass", "%")).To(ConsistOf(
 			"DROP USER IF EXISTS uName@'%'",
