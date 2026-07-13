@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - extra_image
+      - main
 
 # Cancel superseded runs when new commits are pushed to the same PR/branch
 concurrency:
@@ -32,7 +32,7 @@ jobs:
       - name: Build operator image from PR checkout
         run: |
           # Must build from the current checkout: arm64/images/mysql-operator/Dockerfile
-          # re-downloads the extra_image branch sources from GitHub, so building
+          # re-downloads the main branch sources from GitHub, so building
           # with it would not test the PR code
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
           docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .

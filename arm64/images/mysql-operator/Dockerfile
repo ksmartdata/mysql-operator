@@ -9,10 +9,15 @@ USER root
 RUN apt update -y && apt install -y wget gcc unzip
 ENV GOPATH=/build
 
+# Release convention mirrors the sidecar images: tag the repo first, then
+# dispatch the build with build-args OPERATOR_REF=<that tag> so the binary
+# is pinned to an exact commit. The default floats with the main head.
+ARG OPERATOR_REF=main
+
 WORKDIR /build
-RUN wget -O arm64.zip https://github.com/ksmartdata/mysql-operator/archive/refs/heads/extra_image.zip
-RUN unzip arm64.zip
-WORKDIR /build/mysql-operator-extra_image
+RUN wget -O src.zip https://github.com/ksmartdata/mysql-operator/archive/${OPERATOR_REF}.zip
+RUN unzip src.zip && mv mysql-operator-* mysql-operator-src
+WORKDIR /build/mysql-operator-src
 RUN CGO_ENABLED=0 go build  -o /mysql-operator  cmd/mysql-operator/main.go
 
 
