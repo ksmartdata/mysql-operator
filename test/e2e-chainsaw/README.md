@@ -29,7 +29,7 @@ Three chainsaw Tests cover the five scenarios of the 06 design doc
 
 ```bash
 # 1. Build the operator image (must build from the local checkout:
-#    arm64/images/mysql-operator/Dockerfile re-downloads the extra_image
+#    arm64/images/mysql-operator/Dockerfile re-downloads the main
 #    branch sources from GitHub, so it would not test local changes)
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
 docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
