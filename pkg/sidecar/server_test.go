@@ -18,6 +18,7 @@ package sidecar
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 
@@ -110,5 +111,37 @@ var _ = Describe("Test donor replication state evaluation", func() {
 
 	It("should use the replica spelling starting with MySQL 8.4", func() {
 		Expect(showReplicaStatusQuery(semver.MustParse("8.4.9"))).To(Equal("SHOW REPLICA STATUS"))
+	})
+})
+
+var _ = Describe("Test donor master reachability probe", func() {
+
+	It("should accept a replica whose master answers on its port", func() {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).To(Succeed())
+		defer func() {
+			_ = listener.Close()
+		}()
+
+		host, port, err := net.SplitHostPort(listener.Addr().String())
+		Expect(err).To(Succeed())
+		Expect(checkMasterReachable(host, port)).To(Succeed())
+	})
+
+	It("should reject a replica whose master is gone", func() {
+		// grab a port that is guaranteed unused, then release it
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).To(Succeed())
+		host, port, err := net.SplitHostPort(listener.Addr().String())
+		Expect(err).To(Succeed())
+		Expect(listener.Close()).To(Succeed())
+
+		err = checkMasterReachable(host, port)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unreachable"))
+	})
+
+	It("should skip the probe without a replica configuration", func() {
+		Expect(checkMasterReachable("", "")).To(Succeed())
 	})
 })
