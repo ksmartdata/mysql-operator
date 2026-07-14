@@ -38,6 +38,11 @@ const (
 	backupStatusTrailer = "X-Backup-Status"
 	backupSuccessful    = "Success"
 	backupFailed        = "Failed"
+
+	// masterDialTimeout bounds the donor's TCP probe towards its own master;
+	// the requester's init container retries the whole request, so a short
+	// blocking probe in the handler is fine
+	masterDialTimeout = 3 * time.Second
 )
 
 type server struct {
@@ -309,10 +314,41 @@ func checkDonorReplication(cfg *Config) error {
 		return ""
 	}
 
-	return evalReplicationThreads(
+	if err := evalReplicationThreads(
 		columnValue("Slave_IO_Running", "Replica_IO_Running"),
 		columnValue("Slave_SQL_Running", "Replica_SQL_Running"),
+	); err != nil {
+		return err
+	}
+
+	return checkMasterReachable(
+		columnValue("Master_Host", "Source_Host"),
+		columnValue("Master_Port", "Source_Port"),
 	)
+}
+
+// checkMasterReachable probes the donor's own master over TCP. Both
+// replication threads reporting Yes is not enough to conclude the topology is
+// stable: for up to slave_net_timeout seconds after the master dies the IO
+// thread has not noticed and still reports Yes, and a clone request landing in
+// that window (the recreated master pod asks for one immediately) takes LOCK
+// INSTANCE FOR BACKUP right where orchestrator's DeadMaster promotion needs
+// STOP SLAVE / RESET SLAVE ALL. In that scenario the master pod is gone, so
+// the probe fails fast until the promotion tears down the replica
+// configuration and the gate opens on post-promotion data.
+func checkMasterReachable(host, port string) error {
+	if host == "" {
+		return nil
+	}
+	addr := net.JoinHostPort(host, port)
+	conn, err := net.DialTimeout("tcp", addr, masterDialTimeout)
+	if err != nil {
+		return fmt.Errorf("replication is configured but the master %s is unreachable: %s", addr, err)
+	}
+	if cErr := conn.Close(); cErr != nil {
+		log.Error(cErr, "failed to close master probe connection")
+	}
+	return nil
 }
 
 func evalReplicationThreads(ioRunning, sqlRunning string) error {
