@@ -20,8 +20,7 @@ jobs:
       matrix:
         # Version matrix = one production version per operator code-path
         # equivalence class (Major==5 / 8.0.x / >=8.4)
-        # TODO(once 8.4 support lands): add "8.4.9"
-        mysql: ["5.7.44", "8.0.37"]
+        mysql: ["5.7.44", "8.0.37", "8.4.9"]
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +51,9 @@ jobs:
           docker build -t mysql-operator-sidecar-8.0:e2e \
             --build-arg SIDECAR_BASE_IMAGE=ghcr.io/ksmartdata/mysql-operator-sidecar-8.0:v0.7.5-1 \
             -f hack/development/Dockerfile.sidecar-e2e .
+          docker build -t mysql-operator-sidecar-8.4:e2e \
+            --build-arg SIDECAR_BASE_IMAGE=ghcr.io/ksmartdata/mysql-operator-sidecar-8.4:v0.8.1 \
+            -f hack/development/Dockerfile.sidecar-e2e .
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
@@ -64,6 +66,7 @@ jobs:
           kind load docker-image mysql-operator-orchestrator:e2e --name chainsaw
           kind load docker-image mysql-operator-sidecar-5.7:e2e --name chainsaw
           kind load docker-image mysql-operator-sidecar-8.0:e2e --name chainsaw
+          kind load docker-image mysql-operator-sidecar-8.4:e2e --name chainsaw
 
       - name: Install mysql-operator chart
         run: ./hack/e2e-chainsaw-setup.sh
@@ -72,6 +75,8 @@ jobs:
           SIDECAR57_IMAGE_TAG: e2e
           SIDECAR80_IMAGE_REPO: mysql-operator-sidecar-8.0
           SIDECAR80_IMAGE_TAG: e2e
+          SIDECAR84_IMAGE_REPO: mysql-operator-sidecar-8.4
+          SIDECAR84_IMAGE_TAG: e2e
 
       - name: Install chainsaw
         uses: kyverno/action-install-chainsaw@v0.2.13

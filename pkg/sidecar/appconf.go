@@ -133,11 +133,12 @@ func getClientConfigs(user, pass string, v semver.Version) (*ini.File, error) {
 	}
 
 	// MySQL >= 8.4 creates these users with caching_sha2_password, which
-	// refuses full authentication over cleartext TCP. pt-heartbeat/pt-kill
-	// read this file through a client library that neither negotiates TLS by
-	// default nor fetches the server RSA key, so force TLS (the server certs
-	// are auto-generated at initialization). The mysql/mysqladmin consumers
-	// of these files accept ssl-mode as well.
+	// refuses full authentication over cleartext TCP, so require TLS for the
+	// mysql/mysqladmin consumers of these files (server certs are
+	// auto-generated at initialization). NOTE: the DBD::MySQL build used by
+	// pt-heartbeat/pt-kill ignores ssl-mode from option files - those tools
+	// get TLS through their --mysql_ssl container argument instead (see
+	// ptToolkitTLSArgs in the statefulset syncer).
 	if v.GTE(constants.MySQL84) {
 		if _, err := client.NewKey("ssl-mode", "REQUIRED"); err != nil {
 			return nil, err
