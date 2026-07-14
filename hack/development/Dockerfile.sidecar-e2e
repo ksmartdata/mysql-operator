@@ -1,0 +1,16 @@
+# NOTE: this image is for e2e only
+#
+# The sidecar images are released from the ksmartdata/docker-images repo with
+# the mysql-operator sources pinned to a tag, so a PR's pkg/sidecar changes
+# never reach the e2e cluster through them. This overlay keeps the released
+# image (xtrabackup, percona-toolkit, rclone, entrypoint) and replaces only
+# the sidecar binary with the one built from the PR checkout.
+#
+# Build from the repo root:
+#   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator-sidecar_linux_amd64 ./cmd/mysql-operator-sidecar
+#   docker build --build-arg SIDECAR_BASE_IMAGE=<released sidecar image> \
+#     -f hack/development/Dockerfile.sidecar-e2e .
+ARG SIDECAR_BASE_IMAGE
+FROM ${SIDECAR_BASE_IMAGE}
+
+COPY --chmod=0755 ./bin/mysql-operator-sidecar_linux_amd64 /usr/local/bin/mysql-operator-sidecar

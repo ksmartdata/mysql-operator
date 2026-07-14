@@ -40,6 +40,19 @@ jobs:
       - name: Build orchestrator image from PR checkout
         run: docker build -t mysql-operator-orchestrator:e2e -f images/mysql-operator-orchestrator/Dockerfile .
 
+      - name: Build sidecar image from PR checkout
+        run: |
+          # pkg/sidecar runs in the sidecar image, not in the operator image;
+          # overlay the PR-built binary on the released sidecar image so the
+          # gate tests the sidecar code shipped by the PR
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator-sidecar_linux_amd64 ./cmd/mysql-operator-sidecar
+          docker build -t mysql-operator-sidecar-5.7:e2e \
+            --build-arg SIDECAR_BASE_IMAGE=ghcr.io/ksmartdata/mysql-operator-sidecar-5.7:v0.7.4-1 \
+            -f hack/development/Dockerfile.sidecar-e2e .
+          docker build -t mysql-operator-sidecar-8.0:e2e \
+            --build-arg SIDECAR_BASE_IMAGE=ghcr.io/ksmartdata/mysql-operator-sidecar-8.0:v0.7.5-1 \
+            -f hack/development/Dockerfile.sidecar-e2e .
+
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
         with:
@@ -49,9 +62,16 @@ jobs:
         run: |
           kind load docker-image mysql-operator:e2e --name chainsaw
           kind load docker-image mysql-operator-orchestrator:e2e --name chainsaw
+          kind load docker-image mysql-operator-sidecar-5.7:e2e --name chainsaw
+          kind load docker-image mysql-operator-sidecar-8.0:e2e --name chainsaw
 
       - name: Install mysql-operator chart
         run: ./hack/e2e-chainsaw-setup.sh
+        env:
+          SIDECAR57_IMAGE_REPO: mysql-operator-sidecar-5.7
+          SIDECAR57_IMAGE_TAG: e2e
+          SIDECAR80_IMAGE_REPO: mysql-operator-sidecar-8.0
+          SIDECAR80_IMAGE_TAG: e2e
 
       - name: Install chainsaw
         uses: kyverno/action-install-chainsaw@v0.2.13

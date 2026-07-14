@@ -18,6 +18,7 @@ package sidecar
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -27,7 +28,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	"github.com/bitpoke/mysql-operator/pkg/util/constants"
 )
 
 const (
@@ -39,6 +43,10 @@ const (
 type server struct {
 	cfg *Config
 	http.Server
+
+	// isDonorHealthy gates the backup endpoint on the local replication
+	// state; a field so tests can stub the MySQL round-trip
+	isDonorHealthy func() error
 }
 
 func newServer(cfg *Config, stop <-chan struct{}) *server {
@@ -49,6 +57,7 @@ func newServer(cfg *Config, stop <-chan struct{}) *server {
 			Addr:    fmt.Sprintf(":%d", serverPort),
 			Handler: mux,
 		},
+		isDonorHealthy: func() error { return checkDonorReplication(cfg) },
 	}
 
 	// Add handle functions
@@ -79,6 +88,19 @@ func (s *server) backupHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !s.isAuthenticated(r) {
 		http.Error(w, "Not authenticated!", http.StatusForbidden)
+		return
+	}
+
+	// xtrabackup holds LOCK INSTANCE FOR BACKUP for the whole stream; on a
+	// replica whose master just died that lock lands exactly in orchestrator's
+	// DeadMaster recovery window and makes its STOP SLAVE / RESET SLAVE ALL
+	// on this node fail (orchestrator proceeds with the promotion anyway, and
+	// the leftover replication config re-attaches this node to the resurrected
+	// old master). Refuse to serve until replication is out of flux; the
+	// requester's init container retries.
+	if err := s.isDonorHealthy(); err != nil {
+		log.Info("refusing to serve backup: donor replication state is not safe", "reason", err.Error())
+		http.Error(w, fmt.Sprintf("donor not ready to serve a backup: %s", err), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -225,4 +247,85 @@ func stringInSlice(a string, list []string) bool {
 		}
 	}
 	return false
+}
+
+// checkDonorReplication reports whether this node's replication state is safe
+// to serve a backup stream from: either it has no replica configuration at all
+// (a master or a bootstrap node), or both replication threads are running. A
+// replica whose IO thread is reconnecting or stopped is mid-failover or
+// broken: a clone taken from it captures a topology that is being torn down.
+func checkDonorReplication(cfg *Config) error {
+	// the replication user is the same one xtrabackup runs with and holds
+	// REPLICATION CLIENT explicitly (sys_operator only implies it via SUPER,
+	// which MySQL 8.4 drops)
+	dsn := fmt.Sprintf("%s:%s@tcp(127.0.0.1:%s)/?timeout=5s&readTimeout=5s",
+		cfg.ReplicationUser, cfg.ReplicationPassword, mysqlPort)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to open connection to the local mysql: %s", err)
+	}
+	defer func() {
+		if cErr := db.Close(); cErr != nil {
+			log.Error(cErr, "failed to close mysql connection")
+		}
+	}()
+
+	rows, err := db.Query(showReplicaStatusQuery(cfg.MySQLVersion))
+	if err != nil {
+		return fmt.Errorf("failed to query replication status: %s", err)
+	}
+	defer func() {
+		if cErr := rows.Close(); cErr != nil {
+			log.Error(cErr, "failed to close rows")
+		}
+	}()
+
+	if !rows.Next() {
+		// no replica configuration: a master or a standalone node
+		return rows.Err()
+	}
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("failed to read replication status columns: %s", err)
+	}
+	values := make([]sql.RawBytes, len(columns))
+	scanArgs := make([]interface{}, len(columns))
+	for i := range values {
+		scanArgs[i] = &values[i]
+	}
+	if err := rows.Scan(scanArgs...); err != nil {
+		return fmt.Errorf("failed to scan replication status: %s", err)
+	}
+
+	columnValue := func(names ...string) string {
+		for i, col := range columns {
+			for _, name := range names {
+				if col == name {
+					return string(values[i])
+				}
+			}
+		}
+		return ""
+	}
+
+	return evalReplicationThreads(
+		columnValue("Slave_IO_Running", "Replica_IO_Running"),
+		columnValue("Slave_SQL_Running", "Replica_SQL_Running"),
+	)
+}
+
+func evalReplicationThreads(ioRunning, sqlRunning string) error {
+	if ioRunning == "Yes" && sqlRunning == "Yes" {
+		return nil
+	}
+	return fmt.Errorf("replication is configured but not healthy: io_running=%q, sql_running=%q",
+		ioRunning, sqlRunning)
+}
+
+func showReplicaStatusQuery(v semver.Version) string {
+	if v.GTE(constants.MySQL84) {
+		return "SHOW REPLICA STATUS"
+	}
+	return "SHOW SLAVE STATUS"
 }
