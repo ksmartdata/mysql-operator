@@ -23,6 +23,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/blang/semver"
 	"github.com/imdario/mergo"
 	apps "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
@@ -475,21 +476,23 @@ func (s *sfsSyncer) ensureContainersSpec() []core.Container {
 	})
 
 	// PT-HEARTBEAT container
+	heartbeatArgs := []string{
+		"pt-heartbeat",
+		"--update", "--replace",
+		"--check-read-only",
+		"--create-table",
+		"--database", constants.OperatorDbName,
+		"--table", "heartbeat",
+		"--utc",
+		"--defaults-file", constants.ConfHeartBeatPath,
+		// it's important to exit when exceeding more than 20 failed attempts otherwise
+		// pt-heartbeat will run forever using old connection.
+		"--fail-successive-errors=20",
+	}
+	heartbeatArgs = append(heartbeatArgs, ptToolkitTLSArgs(s.cluster.GetMySQLSemVer())...)
 	heartbeat := s.ensureContainer(containerHeartBeatName,
 		s.cluster.GetSidecarImage(),
-		[]string{
-			"pt-heartbeat",
-			"--update", "--replace",
-			"--check-read-only",
-			"--create-table",
-			"--database", constants.OperatorDbName,
-			"--table", "heartbeat",
-			"--utc",
-			"--defaults-file", constants.ConfHeartBeatPath,
-			// it's important to exit when exceeding more than 20 failed attempts otherwise
-			// pt-heartbeat will run forever using old connection.
-			"--fail-successive-errors=20",
-		},
+		heartbeatArgs,
 	)
 	heartbeat.Resources = s.ensureResources(containerHeartBeatName)
 
@@ -508,6 +511,7 @@ func (s *sfsSyncer) ensureContainersSpec() []core.Container {
 			"--host=127.0.0.1",
 			fmt.Sprintf("--defaults-file=%s/client.conf", ConfVolumeMountPath),
 		}
+		command = append(command, ptToolkitTLSArgs(s.cluster.GetMySQLSemVer())...)
 		command = append(command, getCliOptionsFromQueryLimits(s.cluster.Spec.QueryLimits)...)
 
 		killer := s.ensureContainer(containerKillerName,
@@ -713,6 +717,19 @@ func ensureVolume(name string, source core.VolumeSource) core.Volume {
 		Name:         name,
 		VolumeSource: source,
 	}
+}
+
+// ptToolkitTLSArgs returns the extra percona-toolkit arguments for MySQL >= 8.4.
+// Those clusters create users with caching_sha2_password, which refuses full
+// authentication over cleartext TCP. The DBD::MySQL build shipped in the sidecar
+// image ignores ssl-mode from option files, so TLS must be requested through the
+// tools' own --mysql_ssl flag (a DSN attribute passed straight to the driver);
+// the server certs are auto-generated at initialization on every version.
+func ptToolkitTLSArgs(v semver.Version) []string {
+	if v.GTE(constants.MySQL84) {
+		return []string{"--mysql_ssl", "1"}
+	}
+	return nil
 }
 
 func getCliOptionsFromQueryLimits(ql *api.QueryLimits) []string {
