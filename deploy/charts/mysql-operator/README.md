@@ -5,8 +5,8 @@ This is the helm chart for [mysql-operator](https://github.com/ksmartdata/mysql-
 ## TL;DR
 
 ```sh
-## For Helm v3
-helm install mysql-operator oci://ghcr.io/ksmartdata/charts/mysql-operator
+## For Helm v3, from the repository root
+helm install mysql-operator deploy/charts/mysql-operator
 ```
 
 ## Configuration

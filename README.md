@@ -41,7 +41,9 @@ We welcome all contributions in the form of new issues for feature requests, bug
 To deploy this controller, use the provided helm chart by running:
 
 ```shell
-helm install mysql-operator oci://ghcr.io/ksmartdata/charts/mysql-operator
+git clone https://github.com/ksmartdata/mysql-operator.git
+cd mysql-operator
+helm install mysql-operator deploy/charts/mysql-operator
 ```
 
 For more information about chart values see chart [README](deploy/charts/mysql-operator/README.md). This chart will deploy the controller together with an [orchestrator](https://github.com/github/orchestrator) cluster.
