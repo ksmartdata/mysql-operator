@@ -1,9 +1,11 @@
 # MySQL Operator
 
+> **Provenance**: This repository was originally forked from [bitpoke/mysql-operator](https://github.com/bitpoke/mysql-operator) (formerly presslabs/mysql-operator) and was detached into a standalone repository on 2026-07-17, as upstream development had been dormant. It maintains its own release line (v0.7.x, v0.8.x) under the original Apache 2.0 license. All credit for the original design and implementation goes to [Bitpoke](https://www.bitpoke.io/) and the upstream contributors.
+
 MySQL Operator enables bulletproof MySQL on Kubernetes. It manages all the necessary resources for deploying and managing a highly available MySQL cluster. It provides effortless backups, while keeping the cluster highly available.
 
 :beer: :pizza: :coffee:
-If the operator has helped you out with your projects, **please consider [sponsoring](https://github.com/sponsors/bitpoke)** it to speed up the development. [Issues](https://github.com/bitpoke/mysql-operator/issues) are answered in this repo on a best-effort basis. 
+If the operator has helped you out with your projects, **please consider [sponsoring](https://github.com/sponsors/bitpoke)** it to speed up the development. [Issues](https://github.com/ksmartdata/mysql-operator/issues) are answered in this repo on a best-effort basis. 
 
 
 :wrench: :nut_and_bolt: :hammer: 
