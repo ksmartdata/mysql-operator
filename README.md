@@ -41,8 +41,7 @@ We welcome all contributions in the form of new issues for feature requests, bug
 To deploy this controller, use the provided helm chart by running:
 
 ```shell
-helm repo add bitpoke https://helm-charts.bitpoke.io
-helm install mysql-operator bitpoke/mysql-operator
+helm install mysql-operator oci://ghcr.io/ksmartdata/charts/mysql-operator
 ```
 
 For more information about chart values see chart [README](deploy/charts/mysql-operator/README.md). This chart will deploy the controller together with an [orchestrator](https://github.com/github/orchestrator) cluster.
@@ -59,8 +58,8 @@ It is possible that upgrading the MySQL operator to a newer version requires add
 
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/bitpoke/mysql-operator/master/examples/example-cluster-secret.yaml
-kubectl apply -f https://raw.githubusercontent.com/bitpoke/mysql-operator/master/examples/example-cluster.yaml
+kubectl apply -f https://raw.githubusercontent.com/ksmartdata/mysql-operator/main/examples/example-cluster-secret.yaml
+kubectl apply -f https://raw.githubusercontent.com/ksmartdata/mysql-operator/main/examples/example-cluster.yaml
 ```
 
 ## Roadmap to v1.0

@@ -1,0 +1,33 @@
+name: Chart Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  chart-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Package chart
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          helm package deploy/charts/mysql-operator \
+            --version "${TAG#v}" \
+            --app-version "${TAG}" \
+            --destination .chart-out
+
+      - name: Push chart
+        run: helm push .chart-out/mysql-operator-*.tgz oci://ghcr.io/ksmartdata/charts
