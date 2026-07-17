@@ -1,41 +1,44 @@
 apiVersion: v2
 name: mysql-operator
-description: A helm chart for Bitpoke Operator for MySQL
+description: A helm chart for the ksmartdata MySQL Operator
 appVersion: "latest"
 kubeVersion: ">= 1.19.0-0"
 keywords:
   - mysql
   - percona
   - orchestrator
-  - bitpoke
+  - ksmartdata
   - database
 version: 0.0.0
-home: https://www.bitpoke.io/mysql-operator/
+home: https://github.com/ksmartdata/mysql-operator
 sources:
-  - https://github.com/bitpoke/mysql-operator.git
+  - https://github.com/ksmartdata/mysql-operator.git
 annotations:
   artifacthub.io/license: "Apache-2.0"
   artifacthub.io/operator: "true"
   artifacthub.io/operatorCapabilities: "full lifecycle"
   artifacthub.io/images: |
     - name: mysql-operator
-      image: docker.io/bitpoke/mysql-operator:latest
+      image: ghcr.io/ksmartdata/mysql-operator:latest
       whitelisted: true
     - name: orchestrator
-      image: docker.io/bitpoke/mysql-operator-orchestrator:latest
+      image: ghcr.io/ksmartdata/mysql-operator-orchestrator:latest
       whitelisted: true
     - name: mysql-5.7-sidecar
-      image: docker.io/bitpoke/mysql-operator-sidecar-5.7:latest
+      image: ghcr.io/ksmartdata/mysql-operator-sidecar-5.7:latest
       whitelisted: true
     - name: mysql-8.0-sidecar
-      image: docker.io/bitpoke/mysql-operator-sidecar-8.0:latest
+      image: ghcr.io/ksmartdata/mysql-operator-sidecar-8.0:latest
+      whitelisted: true
+    - name: mysql-8.4-sidecar
+      image: ghcr.io/ksmartdata/mysql-operator-sidecar-8.4:latest
       whitelisted: true
   artifacthub.io/crds: |
     - kind: MySQLCluster
       version: v1alpha1
       name: mysqlclusters.mysql.presslabs.org
       displayName: MySQLCluster
-      description: Represents a MySQL cluster managed by Bitpoke's Operator for MySQL.
+      description: Represents a MySQL cluster managed by the ksmartdata MySQL Operator.
   artifacthub.io/crdsExamples: |
     - apiVersion: v1alpha1
       kind: MysqlCluster

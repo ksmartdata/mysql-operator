@@ -1,13 +1,12 @@
-# Bitpoke MySQL Operator
+# MySQL Operator
 
-This is the helm chart for [mysql-operator](https://github.com/bitpoke/mysql-operator).
+This is the helm chart for [mysql-operator](https://github.com/ksmartdata/mysql-operator).
 
 ## TL;DR
 
 ```sh
-## For Helm v3
-helm repo add bitpoke https://helm-charts.bitpoke.io
-helm install mysql-operator bitpoke/mysql-operator
+## For Helm v3, from the repository root
+helm install mysql-operator deploy/charts/mysql-operator
 ```
 
 ## Configuration
@@ -17,12 +16,12 @@ The following table contains the configuration parameters for mysql-operator and
 | Parameter                       | Description                                                                                   | Default value                                           |
 | ---                             | ---                                                                                           | ---                                                     |
 | `replicaCount`                  | Replicas for controller                                                                       | `1`                                                     |
-| `image.repository`              | Docker repository for MySQL operator controller                                               | `docker.io/bitpoke/mysql-operator`                      |
+| `image.repository`              | Docker repository for MySQL operator controller                                               | `ghcr.io/ksmartdata/mysql-operator`                      |
 | `image.tag`                     | Docker image tag for MySQL operator controller                                                | `latest`                                                |
 | `image.pullPolicy`              | Docker image pull policy for MySQL operator controller                                        | `IfNotPresent`                                          |
-| `sidecar57.image.repository`    | Docker repository for sidecar image for MySQL 5.7                                             | `docker.io/bitpoke/mysql-operator-sidecar-5.7`          |
+| `sidecar57.image.repository`    | Docker repository for sidecar image for MySQL 5.7                                             | `ghcr.io/ksmartdata/mysql-operator-sidecar-5.7`          |
 | `sidecar57.image.tag`           | Docker image tag for sidecar image for MySQL 5.7                                              | `latest`                                                |
-| `sidecar80.image.repository`    | Docker repository for sidecar image for MySQL 8.0                                             | `docker.io/bitpoke/mysql-operator-sidecar-8.0`          |
+| `sidecar80.image.repository`    | Docker repository for sidecar image for MySQL 8.0                                             | `ghcr.io/ksmartdata/mysql-operator-sidecar-8.0`          |
 | `sidecar80.image.tag`           | Docker image tag for sidecar image for MySQL 8.0                                              | `latest`                                                |
 | `metricsExporter.image.repository`    | Docker repository for MySQL metrics exporter                                            | `docker.io/prom/mysqld-exporter`                        |
 | `metricsExporter.image.tag`           | Docker image tag for MySQL metrics exporter                                             | `v0.13.0`                                                      |
@@ -45,7 +44,7 @@ The following table contains the configuration parameters for mysql-operator and
 | `affinity`                      | MySQL Operator pod affinity                                                                   | `{}`                                                    |
 | `gracefulShutdown.enabled`      | Insert a pre-stop lifecycle hook and trigger a failover when a MySQL pod is stopped           | `true`                                                  |
 | `watchNamespace`                | The namespace where the operator to watch for resources. Leave empty to watch all namespaces. | `empty`                                                 |
-| `orchestrator.image.repository` | Docker repository for [orchestrator](https://github.com/openark/orchestrator)                 | `docker.io/bitpoke/mysql-operator-orchestrator`         |
+| `orchestrator.image.repository` | Docker repository for [orchestrator](https://github.com/openark/orchestrator)                 | `ghcr.io/ksmartdata/mysql-operator-orchestrator`         |
 | `orchestrator.image.tag`        | Docker image tag for [orchestrator](https://github.com/openark/orchestrator)                  | `latest`                                                |
 | `orchestrator.image.pullPolicy` | Docker image pull policy for [orchestrator](https://github.com/openark/orchestrator)          | `IfNotPresent`                                          |
 | `orchestrator.topologyUser`     | Set a user for orchestrator to use it to connect to the MySQL cluster                         | `orchestrator`                                          |

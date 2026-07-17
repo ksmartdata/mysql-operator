@@ -39,7 +39,7 @@ GO_INTEGRATION_TESTS_PARAMS ?= -timeout 50m \
 TEST_FILTER_PARAM += $(GO_INTEGRATION_TESTS_PARAMS)
 include build/makelib/golang.mk
 
-DOCKER_REGISTRY ?= docker.io/bitpoke
+DOCKER_REGISTRY ?= ghcr.io/ksmartdata
 IMAGES ?= mysql-operator mysql-operator-orchestrator mysql-operator-sidecar-5.7 mysql-operator-sidecar-8.0
 include build/makelib/image.mk
 
@@ -91,13 +91,10 @@ include build/makelib/helm.mk
 
 .PHONY: .helm.publish
 .helm.publish:
-	@$(INFO) publishing helm charts
-	@rm -rf $(WORK_DIR)/charts
-	@git clone -q git@github.com:bitpoke/helm-charts.git $(WORK_DIR)/charts
-	@cp $(HELM_OUTPUT_DIR)/*.tgz $(WORK_DIR)/charts/docs/
-	@git -C $(WORK_DIR)/charts add $(WORK_DIR)/charts/docs/*.tgz
-	@git -C $(WORK_DIR)/charts commit -q -m "Added $(call list-join,$(COMMA)$(SPACE),$(foreach c,$(HELM_CHARTS),$(c)-v$(HELM_CHART_VERSION)))"
-	@git -C $(WORK_DIR)/charts push -q
+	@$(INFO) publishing helm charts to oci://ghcr.io/ksmartdata/charts
+	@for chart in $(HELM_OUTPUT_DIR)/*.tgz; do \
+		helm push $$chart oci://ghcr.io/ksmartdata/charts; \
+	done
 	@$(OK) publishing helm charts
 .publish.run: .helm.publish
 

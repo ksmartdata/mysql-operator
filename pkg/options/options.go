@@ -139,8 +139,8 @@ const (
 )
 
 var (
-	defaultSidecarMysql57Image = "docker.io/bitpoke/mysql-operator-sidecar-5.7:" + version.GetInfo().GitVersion
-	defaultSidecarMysql8Image  = "docker.io/bitpoke/mysql-operator-sidecar-8.0:" + version.GetInfo().GitVersion
+	defaultSidecarMysql57Image = "ghcr.io/ksmartdata/mysql-operator-sidecar-5.7:" + version.GetInfo().GitVersion
+	defaultSidecarMysql8Image  = "ghcr.io/ksmartdata/mysql-operator-sidecar-8.0:" + version.GetInfo().GitVersion
 	defaultSidecarMysql84Image = "ghcr.io/ksmartdata/mysql-operator-sidecar-8.4:" + version.GetInfo().GitVersion
 )
 

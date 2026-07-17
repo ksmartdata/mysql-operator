@@ -4,20 +4,20 @@
 replicaCount: 1
 
 image:
-  repository: docker.io/bitpoke/mysql-operator
+  repository: ghcr.io/ksmartdata/mysql-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
 sidecar57:
   image:
-    repository: docker.io/bitpoke/mysql-operator-sidecar-5.7
+    repository: ghcr.io/ksmartdata/mysql-operator-sidecar-5.7
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
 
 sidecar80:
   image:
-    repository: docker.io/bitpoke/mysql-operator-sidecar-8.0
+    repository: ghcr.io/ksmartdata/mysql-operator-sidecar-8.0
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
 
@@ -140,7 +140,7 @@ mysqlClustersGlobalServiceMonitor:
 
 orchestrator:
   image:
-    repository: docker.io/bitpoke/mysql-operator-orchestrator
+    repository: ghcr.io/ksmartdata/mysql-operator-orchestrator
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
