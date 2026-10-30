@@ -29,12 +29,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build operator image from PR checkout
-        run: |
-          # Must build from the current checkout: arm64/images/mysql-operator/Dockerfile
-          # re-downloads the main branch sources from GitHub, so building
-          # with it would not test the PR code
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mysql-operator_linux_amd64 ./cmd/mysql-operator
-          docker build -t mysql-operator:e2e -f hack/development/Dockerfile.operator .
+        run: docker build -t mysql-operator:e2e -f arm64/images/mysql-operator/Dockerfile .
 
       - name: Build orchestrator image from PR checkout
         run: docker build -t mysql-operator-orchestrator:e2e -f images/mysql-operator-orchestrator/Dockerfile .

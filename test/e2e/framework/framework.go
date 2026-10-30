@@ -122,7 +122,7 @@ func (f *Framework) AfterEach() {
 	By("Delete testing namespace")
 	err := DeleteNS(f.ClientSet, f.Namespace.Name, DefaultNamespaceDeletionTimeout)
 	if err != nil {
-		Failf(fmt.Sprintf("Can't delete namespace: %s", err))
+		Failf("Can't delete namespace: %s", err)
 	}
 }
 

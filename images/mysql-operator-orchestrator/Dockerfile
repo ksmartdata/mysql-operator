@@ -24,12 +24,13 @@ RUN CGO_ENABLED=1 go build -mod=vendor \
 # and dockerize (config templating in the entrypoint) ---
 # The toolchain floor is dockerize: its go.mod declares go 1.27.0, so an older
 # builder would have to fetch a toolchain mid-build instead of using its own.
-FROM golang:1.27 AS helper-builder
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS helper-builder
 WORKDIR /src/mysql-operator
 COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd/ cmd/
 COPY pkg/ pkg/
-RUN CGO_ENABLED=0 go build -o /out/orc-helper ./cmd/orc-helper
+RUN CGO_ENABLED=0 go build -mod=readonly -o /out/orc-helper ./cmd/orc-helper
 # Cloned rather than go install'd so the build stays pinned to a tag object and
 # needs no module proxy. v0.7.0 shipped golang.org/x/crypto v0.9.0
 # (CVE-2024-45337) and x/net v0.10.0; v0.15.0 is on x/crypto v0.52.0 and no

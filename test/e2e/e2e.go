@@ -124,7 +124,7 @@ var _ = ginkgo.SynchronizedAfterSuite(func() {
 	ginkgo.By("Delete operator namespace")
 
 	if err := framework.DeleteNS(client, operatorNamespace, framework.DefaultNamespaceDeletionTimeout); err != nil {
-		framework.Failf(fmt.Sprintf("Can't delete namespace: %s", err))
+		framework.Failf("Can't delete namespace: %s", err)
 	}
 }, func() {
 	// Run only Ginkgo on node 1
